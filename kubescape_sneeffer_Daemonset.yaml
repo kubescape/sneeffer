@@ -143,13 +143,11 @@ spec:
           imagePullPolicy: Always
           env:
             - name: SNEEFFER_CONF_FILE_PATH
-              value: "/etc/sneeffer/configuration/SneefferConfigurationFile.txt"
-            - name: SYFT_REGISTRY_INSECURE_SKIP_TLS_VERIFY 
-              value: "true"
-            - name: GRYPE_REGISTRY_INSECURE_SKIP_TLS_VERIFY  
-              value: "true"
-            - name: GRYPE_DB_CACHE_DIR  
-              value: "/etc/sneeffer/resources/vuln/db/db"
+              value: "/etc/sneeffer/configuration/SneefferConfigurationFile.txt" 
+            - name: myNode
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           securityContext:
             runAsUser: 0
             capabilities:

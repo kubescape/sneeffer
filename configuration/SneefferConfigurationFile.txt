@@ -7,3 +7,4 @@ snifferTime=1
 loggerVerbose=DEBUG
 crdFullDetailedPath=./resources/k8s/crd-vuln-full-detailes.yaml
 crdVulnSummaryPath=./resources/k8s/crd-vuln-summary.yaml
+myNode=minikube

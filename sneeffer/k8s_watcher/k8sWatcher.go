@@ -54,23 +54,11 @@ type ContainerWatcher struct {
 var containerWatcher *ContainerWatcher
 
 func getMyNode(clientset *kubernetes.Clientset) (string, error) {
-	return "minikube", nil
-
-	namespace, exist := os.LookupEnv("MY_NAMESPACE")
-	if !exist {
-		return "", fmt.Errorf("getMyNode: MY_NAMESPACE env var not exist")
+	nodeName, exist := os.LookupEnv("myNode")
+	if exist {
+		return nodeName, nil
 	}
-	name, exist := os.LookupEnv("MY_DAEMONSET_NAME")
-	if !exist {
-		return "", fmt.Errorf("getMyNode: MY_DAEMONSET_NAME env var not exist")
-	}
-
-	_, err := clientset.AppsV1().DaemonSets(namespace).Get(global_data.GlobalHTTPContext, name, v1.GetOptions{})
-	if err != nil {
-		return "", err
-	}
-
-	return "minikube", nil
+	return "", fmt.Errorf("getMyNode: the env var myNode is missing")
 }
 
 func CreateContainerWatcher() (*ContainerWatcher, error) {
