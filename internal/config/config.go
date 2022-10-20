@@ -20,7 +20,7 @@ func init() {
 	manadatoryConfigurationVars = append(manadatoryConfigurationVars, "innerDataDirPath")
 	manadatoryConfigurationVars = append(manadatoryConfigurationVars, "crdFullDetailedPath")
 	manadatoryConfigurationVars = append(manadatoryConfigurationVars, "crdVulnSummaryPath")
-	innerDirectoriesPath = append(manadatoryConfigurationVars, "myNode")
+	manadatoryConfigurationVars = append(manadatoryConfigurationVars, "myNode")
 	innerDirectoriesPath = append(innerDirectoriesPath, "/sbom")
 	innerDirectoriesPath = append(innerDirectoriesPath, "/vuln")
 }
