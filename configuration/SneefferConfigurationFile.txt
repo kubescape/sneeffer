@@ -1,0 +1,9 @@
+innerDataDirPath=./data
+kernelObjPath=./resources/ebpf/kernel_obj.o
+snifferEngineLoaderPath=./resources/ebpf/sniffer
+sbomCreatorPath=./resources/sbom/syft
+vulnCreatorPath=./resources/vuln/grype
+snifferTime=1
+loggerVerbose=DEBUG
+crdFullDetailedPath=./resources/k8s/crd-vuln-full-detailes.yaml
+crdVulnSummaryPath=./resources/k8s/crd-vuln-summary.yaml
