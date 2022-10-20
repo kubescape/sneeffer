@@ -3,3 +3,4 @@ resources/ebpf/sniffer
 resources/ebpf/kernel_obj.o
 resources/sbom/syft
 resources/vuln/grype
+dependencies/*
