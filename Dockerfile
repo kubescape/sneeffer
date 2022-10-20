@@ -25,6 +25,6 @@ COPY ./resources/ /etc/sneeffer/resources/
 COPY --from=builder /etc/grype_sc/bin/grype /etc/sneeffer/resources/vuln/grype
 COPY --from=builder /etc/syft_sc/bin/syft /etc/sneeffer/resources/sbom/syft
 
-COPY ./armo_sneeffer /etc/sneeffer/armo_sneeffer
+COPY ./kubescape_sneeffer /etc/sneeffer/kubescape_sneeffer
 WORKDIR /etc/sneeffer
 CMD [ "/etc/sneeffer/resources/entrypoint.sh" ]
