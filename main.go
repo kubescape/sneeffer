@@ -27,7 +27,7 @@ func main() {
 
 	err = validator.CheckPrerequsits()
 	if err != nil {
-		log.Fatalf("error during check prerequsits: %v", err)
+		log.Fatalf("error during check prerequisites: %v", err)
 	}
 
 	err = DB.CreateCRDs()

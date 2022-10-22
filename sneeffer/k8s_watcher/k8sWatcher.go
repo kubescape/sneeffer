@@ -209,7 +209,8 @@ func getK8SIdentityTripplet(pod *core.Pod) k8sTripeletIdentity {
 }
 
 func (containerWatcher *ContainerWatcher) StartWatchingOnNewContainers() error {
-	watcher, err := containerWatcher.k8sClient.CoreV1().Pods("").Watch(global_data.GlobalHTTPContext, v1.ListOptions{FieldSelector: "spec.nodeName=" + containerWatcher.nodeName})
+	logger.Print(logger.DEBUG, false, "sneeffer is ready to watch over node %s\n", containerWatcher.nodeName)
+	watcher, err := containerWatcher.k8sClient.CoreV1().Pods("").Watch(global_data.GlobalHTTPContext, v1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -218,6 +219,9 @@ func (containerWatcher *ContainerWatcher) StartWatchingOnNewContainers() error {
 		event := <-watcher.ResultChan()
 		pod, ok := event.Object.(*core.Pod)
 		if !ok {
+			continue
+		}
+		if pod.Spec.NodeName != containerWatcher.nodeName {
 			continue
 		}
 		switch event.Type {

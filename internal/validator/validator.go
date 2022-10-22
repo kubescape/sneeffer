@@ -4,8 +4,6 @@ import (
 	"armo_sneeffer/internal/logger"
 	"fmt"
 	"syscall"
-
-	"github.com/hashicorp/go-version"
 )
 
 var minKernelVersion string
@@ -29,15 +27,7 @@ func checkKernelVersion() error {
 	kernelVersion := int8ToStr(uname.Sysname[:]) + "," + int8ToStr(uname.Release[:]) + "," + int8ToStr(uname.Version[:])
 	logger.Print(logger.DEBUG, false, "kernelVersion: %s\n", kernelVersion)
 
-	currentVersion, err := version.NewVersion(int8ToStr(uname.Release[:]))
-	if err != nil {
-		return err
-	}
-	minVersion, err := version.NewVersion(minKernelVersion)
-	if err != nil {
-		return err
-	}
-	if currentVersion.LessThan(minVersion) {
+	if int8ToStr(uname.Release[:]) < minKernelVersion {
 		return fmt.Errorf("checkKernelVersion: the current kernel version %s is less than the min kernel version support %s", int8ToStr(uname.Release[:]), minKernelVersion)
 	}
 
