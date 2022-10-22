@@ -25,27 +25,24 @@ spec:
                   type: string
                 ancestorName:
                   type: string
-                detailes:
-                  type: object
-                  properties:
-                    relaventCVEs:
-                      type: array
-                      items:
-                        type: object
-                        properties:
-                          cVEName:
-                            type: string
-                          cVESeverity:
-                            type: string
-                    irrelaventCVEs:
-                      type: array
-                      items:
-                        type: object
-                        properties:
-                          cVEName:
-                            type: string
-                          cVESeverity:
-                            type: string
+                relaventCVEs:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      cVEName:
+                        type: string
+                      cVESeverity:
+                        type: string
+                irrelaventCVEs:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      cVEName:
+                        type: string
+                      cVESeverity:
+                        type: string
   names:
     kind: RuntimeVulnDetailed
     plural: runtimevulndetaileds

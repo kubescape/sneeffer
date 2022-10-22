@@ -36,8 +36,8 @@ type VulnSummary struct {
 }
 
 type VulnCVEs struct {
-	CVEName     string `json:"CVEName"`
-	CVESeverity string `json:"CVESeverity"`
+	CVEName     string `json:"cVEName"`
+	CVESeverity string `json:"cVESeverity"`
 }
 
 type VulnDetailed struct {
