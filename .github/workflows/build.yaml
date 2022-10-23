@@ -6,6 +6,7 @@ on:
     paths-ignore:
       # Do not run the pipeline if only Markdown files changed
       - '**.md'
+      - '**kubescape_sneeffer_Daemonset.yaml'
 jobs:
   test:
     name: Create cross-platform release build, tag and upload binaries 
@@ -81,5 +82,6 @@ jobs:
         run: docker login -u="${QUAY_USERNAME}" -p="${QUAY_PASSWORD}" quay.io
 
       - name: Build the Docker image
+
         run: docker buildx build . --file ./Dockerfile --tag ${{ steps.image-name.outputs.IMAGE_NAME }}:${{ steps.image-version.outputs.IMAGE_VERSION }} --tag ${{ steps.image-name.outputs.IMAGE_NAME }}:latest --build-arg image_version=${{ steps.image-version.outputs.IMAGE_VERSION }} --push
 
