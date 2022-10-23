@@ -1,9 +1,10 @@
 package aggregator
 
 import (
-	"armo_sneeffer/internal/logger"
-	"armo_sneeffer/sneeffer/accumulator"
 	"strings"
+
+	"github.com/kubescape/sneeffer/internal/logger"
+	"github.com/kubescape/sneeffer/sneeffer/accumulator"
 )
 
 type Aggregator struct {

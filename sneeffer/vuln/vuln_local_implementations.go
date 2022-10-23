@@ -1,15 +1,16 @@
 package vuln
 
 import (
-	"armo_sneeffer/internal/logger"
-	"armo_sneeffer/sneeffer/sbom"
-	"armo_sneeffer/sneeffer/utils"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
+
+	"github.com/kubescape/sneeffer/internal/logger"
+	"github.com/kubescape/sneeffer/sneeffer/sbom"
+	"github.com/kubescape/sneeffer/sneeffer/utils"
 
 	"github.com/anchore/grype/grype/presenter/models"
 )

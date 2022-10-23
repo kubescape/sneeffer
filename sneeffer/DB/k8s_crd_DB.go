@@ -1,12 +1,13 @@
 package DB
 
 import (
-	"armo_sneeffer/internal/logger"
-	global_data "armo_sneeffer/sneeffer/global_data/k8s"
-	"armo_sneeffer/sneeffer/utils"
-	"armo_sneeffer/sneeffer/vuln"
 	"os"
 	"path/filepath"
+
+	"github.com/kubescape/sneeffer/internal/logger"
+	global_data "github.com/kubescape/sneeffer/sneeffer/global_data/k8s"
+	"github.com/kubescape/sneeffer/sneeffer/utils"
+	"github.com/kubescape/sneeffer/sneeffer/vuln"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextension "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"

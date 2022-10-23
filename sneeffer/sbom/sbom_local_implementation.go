@@ -1,13 +1,14 @@
 package sbom
 
 import (
-	"armo_sneeffer/internal/logger"
-	"armo_sneeffer/sneeffer/utils"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+
+	"github.com/kubescape/sneeffer/internal/logger"
+	"github.com/kubescape/sneeffer/sneeffer/utils"
 )
 
 type SbomObject struct {

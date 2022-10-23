@@ -1,9 +1,10 @@
 package validator
 
 import (
-	"armo_sneeffer/internal/logger"
 	"fmt"
 	"syscall"
+
+	"github.com/kubescape/sneeffer/internal/logger"
 )
 
 var minKernelVersion string

@@ -1,4 +1,4 @@
-module armo_sneeffer
+module github.com/kubescape/sneeffer
 
 go 1.18
 

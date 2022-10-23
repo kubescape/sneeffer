@@ -1,6 +1,6 @@
 package vuln
 
-import "armo_sneeffer/sneeffer/sbom"
+import "github.com/kubescape/sneeffer/sneeffer/sbom"
 
 type vulnInterface interface {
 	CreateVulnObject(imageID string, sbomObject sbom.SbomObject) *vulnInterface

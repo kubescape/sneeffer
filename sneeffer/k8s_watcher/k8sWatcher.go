@@ -1,18 +1,19 @@
 package k8s_watcher
 
 import (
-	"armo_sneeffer/internal/logger"
-	"armo_sneeffer/sneeffer/DB"
-	"armo_sneeffer/sneeffer/aggregator"
-	global_data "armo_sneeffer/sneeffer/global_data/k8s"
-	"armo_sneeffer/sneeffer/sbom"
-	"armo_sneeffer/sneeffer/vuln"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kubescape/sneeffer/internal/logger"
+	"github.com/kubescape/sneeffer/sneeffer/DB"
+	"github.com/kubescape/sneeffer/sneeffer/aggregator"
+	global_data "github.com/kubescape/sneeffer/sneeffer/global_data/k8s"
+	"github.com/kubescape/sneeffer/sneeffer/sbom"
+	"github.com/kubescape/sneeffer/sneeffer/vuln"
 
 	core "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"

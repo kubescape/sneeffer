@@ -1,14 +1,16 @@
 package main
 
 import (
-	"armo_sneeffer/internal/config"
-	"armo_sneeffer/internal/logger"
-	"armo_sneeffer/internal/validator"
-	"armo_sneeffer/sneeffer/DB"
-	"armo_sneeffer/sneeffer/accumulator"
-	"armo_sneeffer/sneeffer/k8s_watcher"
 	"log"
 	"os"
+
+	"github.com/kubescape/sneeffer/internal/logger"
+	"github.com/kubescape/sneeffer/internal/validator"
+	"github.com/kubescape/sneeffer/sneeffer/DB"
+	"github.com/kubescape/sneeffer/sneeffer/accumulator"
+	"github.com/kubescape/sneeffer/sneeffer/k8s_watcher"
+
+	"github.com/kubescape/sneeffer/internal/config"
 )
 
 func waitOnCacheAccumulatorProccessErrorCode(cacheAccumulatorErrorChan chan error) {

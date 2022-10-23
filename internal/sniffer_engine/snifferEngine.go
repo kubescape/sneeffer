@@ -1,11 +1,12 @@
 package sniffer_engine
 
 import (
-	"armo_sneeffer/internal/logger"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+
+	"github.com/kubescape/sneeffer/internal/logger"
 )
 
 type SnifferEngine struct {

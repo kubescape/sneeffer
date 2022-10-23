@@ -1,8 +1,6 @@
 package accumulator
 
 import (
-	"armo_sneeffer/internal/logger"
-	"armo_sneeffer/internal/sniffer_engine"
 	"bufio"
 	"io"
 	"os"
@@ -10,6 +8,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kubescape/sneeffer/internal/logger"
+	"github.com/kubescape/sneeffer/internal/sniffer_engine"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )

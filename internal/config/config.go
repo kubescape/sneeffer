@@ -1,12 +1,13 @@
 package config
 
 import (
-	"armo_sneeffer/internal/logger"
 	"bufio"
 	"fmt"
 	"log"
 	"os"
 	"strings"
+
+	"github.com/kubescape/sneeffer/internal/logger"
 )
 
 var manadatoryConfigurationVars []string
