@@ -38,16 +38,16 @@ the ebpf-engine that the sneeffer is using can be find in following link: https:
 ## installing and running steps to run as k8s daemonset
 1. kubectl apply -f ./kubescape_sneeffer_Daemonset.yaml - it will apply to default namespace
 
-### for developers
-#### installing steps to run locally
+## for developers
+### installing steps to run locally
 1. run the script ./install_dependencies.sh in order to compile relavent binaries - this step is quiet long (15 minutes more or less)
 2. go build -o kubescape_sneeffer .
 
-#### running command and preparations
-##### preparations
+### running command and preparations
+#### preparations
 1. run minikube with the command: minikube start. minikube instalation can be find in the following link: https://minikube.sigs.k8s.io/docs/start/
 
-##### running command
+#### running command
 0. the configuration file in in the path ./configuration/SneefferConfigurationFile.txt - it can be change.
     by default for run locally no change is needed, beside the myNode key that it is matched to minikube which it's node called minikube.
 1. sudo SNEEFFER_CONF_FILE_PATH=./configuration/SneefferConfigurationFile.txt HOME=<your home directory> ./kubescape_sneeffer

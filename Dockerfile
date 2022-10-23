@@ -1,15 +1,20 @@
 FROM golang:1.18 as builder
 
-RUN apt install git curl -y
+RUN apt install git curl cmake make -y
 RUN git clone https://github.com/anchore/grype.git /etc/grype_sc
 WORKDIR /etc/grype_sc
-RUN git checkout v0.49.0
-RUN ./install.sh
+RUN ./install.sh v0.49.0
 
 RUN git clone https://github.com/anchore/syft.git /etc/syft_sc
 WORKDIR /etc/syft_sc
-RUN git checkout v0.54.0
-RUN ./install.sh
+RUN ./install.sh v0.54.0
+
+RUN git clone git@github.com:kubescape/ebpf-engine.git /etc/kubescape_ebpf_engine_sc
+WORKDIR /etc/kubescape_ebpf_engine_sc
+RUN ./install_dependencies.sh
+RUN mkdir build && cd ./build
+RUN cmake ..
+RUN make all
 
 WORKDIR /etc/sneeffer
 ADD . .
@@ -28,7 +33,8 @@ RUN mkdir /etc/sneeffer/data
 COPY ./resources/ /etc/sneeffer/resources/
 COPY --from=builder /etc/grype_sc/bin/grype /etc/sneeffer/resources/vuln/grype
 COPY --from=builder /etc/syft_sc/bin/syft /etc/sneeffer/resources/sbom/syft
-
+COPY --from=builder /etc/kubescape_ebpf_engine_sc/build/main /etc/sneeffer/resources/ebpf/sniffer
 COPY --from=builder /etc/sneeffer/kubescape_sneeffer /etc/sneeffer/kubescape_sneeffer
+
 WORKDIR /etc/sneeffer
 CMD [ "/etc/sneeffer/resources/entrypoint.sh" ]
