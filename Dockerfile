@@ -1,6 +1,6 @@
 FROM golang:1.18 as builder
 
-RUN apt update && apt install git curl cmake make -y
+RUN apt update && apt install git curl cmake make libelf-dev -y
 RUN git clone https://github.com/anchore/grype.git /etc/grype_sc
 WORKDIR /etc/grype_sc
 RUN ./install.sh v0.49.0
