@@ -1,53 +1,92 @@
-# kubescape-sneeffer
+# Sneeffer
 
-## introduction
-the sneeffer goal is to find relavent CVEs by monitoring it's runtime container and found the relavent files that the container is openning, and adjust the opened files of the 
-container to the container existing files. 
-the sneeffer is using falco libraies for monitoring any container that start in the k8s cluster by inject to the kernel ebpf code that monitor relavent linux syscalls. 
-the ebpf-engine that the sneeffer is using can be find in following link: https://github.com/kubescape/ebpf-engine
+The goal of Sneeffer is to find relevant CVEs by monitoring its runtime container and find the relevant files that the container is opening, and adjust the opened files of the container to the container's existing files.
 
-## prerequisites
-1. the node linux kernel version must be greater or equal to 4.14
-2. install the linux-headers for any distribution for the falco engine, can be find in the following link: https://falco.org/docs/getting-started/installation/
-    in case of k8s daemonset instalation it need to be installed in the all the cluster nodes
-    ** in case of minikube the linux headers must be installed in the minikube container
+Sneeffer is using [Falco](https://falco.org/) libraries for monitoring any container which runs in the K8s cluster by injecting to the kernel eBPF code which monitors relevant Linux system calls.
+The ebpf-engine that Sneeffer is using can be found in following link: https://github.com/kubescape/ebpf-engine
 
-## configuration file
-1. innerDataDirPath - save sbom and vuln data.
-2. kernelObjPath - path to the kernel obj(it is compiled per node by init container).
-3. snifferEngineLoaderPath - binary of loader of the kernel obj to the container.
-4. sbomCreatorPath - binary that create the sbom(list of files existing in the image).
-5. vulnCreatorPath - binary that download the CVES in the image.
-6. snifferTime - time of the monitoring on the created container.
-7. loggerVerbose - log verbose
-8. crdFullDetailedPath - path to crd yaml of the full of runtime CVE data
-9. crdVulnSummaryPath - path to crd yaml of the summary of runtime CVE data
-10. myNode - name of the node that would be monitored
-### example
-    innerDataDirPath=./data
-    kernelObjPath=./resources/ebpf/kernel_obj.o
-    snifferEngineLoaderPath=./resources/ebpf/sniffer
-    sbomCreatorPath=./resources/sbom/syft
-    vulnCreatorPath=./resources/vuln/grype
-    snifferTime=1 
-    loggerVerbose=INFO
-    crdFullDetailedPath=./resources/k8s/crd-vuln-full-detailes.yaml
-    crdVulnSummaryPath=./resources/k8s/crd-vuln-summary.yaml
-    myNode=minikube
+## Prerequisites
 
-## installing and running steps to run as k8s daemonset
-1. kubectl apply -f ./kubescape_sneeffer_Daemonset.yaml - it will apply to default namespace
+Follow the steps below for every cluster node:
 
-## for developers
-### installing steps to run locally
-1. run the script ./install_dependencies.sh in order to compile relavent binaries - this step is quiet long (15 minutes more or less)
-2. go build -o kubescape_sneeffer .
+1. Confirm that your Node is running Linux kernel version >= 4.14
+2. Install the relevant Linux headers for the Falco engine. Instructions for the supported distributions can be found in the [following link](https://falco.org/docs/getting-started/installation/)
 
-### running command and preparations
-#### preparations
-1. run minikube with the command: minikube start. minikube instalation can be find in the following link: https://minikube.sigs.k8s.io/docs/start/
+> Note: In case of K8s DaemonSet deployment, all cluster nodes must be installed with the relevant Linux headers. In case of minikube deployment the Linux headers must be installed in the minikube container.
 
-#### running command
-0. the configuration file in in the path ./configuration/SneefferConfigurationFile.txt - it can be change.
-    by default for run locally no change is needed, beside the myNode key that it is matched to minikube which it's node called minikube.
-1. sudo SNEEFFER_CONF_FILE_PATH=./configuration/SneefferConfigurationFile.txt HOME=<your home directory> ./kubescape_sneeffer
+## Configuration file
+
+| Configuration Key | Description                 |
+|-------------------|-----------------------------|
+|`innerDataDirPath` | Save sbom and vuln data     |
+|`kernelObjPath`    | Kernel object path <br>(it is compiled per node by init container)|
+|`snifferEngineLoaderPath`| Path of binary loader of the kernel object to the container|
+|`sbomCreatorPath`  | Path of binary which creates the SBOM (list of files existing in the image)|
+|`vulnCreatorPath`  | Path of binary which downloads the CVEs in the image|
+|`snifferTime`      | Monitoring time of the created container (seconds)|
+|`loggerVerbose`    | Log verbose|
+|`crdFullDetailedPath`| CRD yaml file path of the detailed runtime CVE data|
+|`crdVulnSummaryPath` | CRD yaml file path of the summary runtime CVE data|
+|`myNode`           | Name of the node that would be monitored|
+
+
+### Example
+
+```
+innerDataDirPath=./data
+kernelObjPath=./resources/ebpf/kernel_obj.o
+snifferEngineLoaderPath=./resources/ebpf/sniffer
+sbomCreatorPath=./resources/sbom/syft
+vulnCreatorPath=./resources/vuln/grype
+snifferTime=1 
+loggerVerbose=INFO
+crdFullDetailedPath=./resources/k8s/crd-vuln-full-detailes.yaml
+crdVulnSummaryPath=./resources/k8s/crd-vuln-summary.yaml
+myNode=minikube
+```
+
+## Installation
+
+### K8s DaemonSet
+
+Sneeffer can be installed as a K8s DaemonSet using the pre-built image, by running the following command on your K8s cluster:
+```
+kubectl apply -f ./kubescape_sneeffer_Daemonset.yaml
+```
+This will create a DaemonSet in the default namespace.
+
+---
+
+### Building from source and running locally (minikube)
+
+Follow the steps below to build Sneeffer from source and install it on your local minikube cluster. 
+
+[Minikube must be installed](https://minikube.sigs.k8s.io/docs/start/) on your machine as a prerequisite.
+
+1. Compile relevant binaries by running the following script:
+
+```sh
+./install_dependencies.sh
+```
+
+<i>This step can take ~15 minutes depending on your machine.</i>
+
+2. Build Sneeffer
+
+```
+go build -o kubescape_sneeffer .
+```
+
+3. Run minikube:
+
+```
+minikube start
+```
+
+4. Run Sneeffer:
+
+```
+sudo SNEEFFER_CONF_FILE_PATH=./configuration/SneefferConfigurationFile.txt HOME=<your home directory> ./kubescape_sneeffer
+```
+
+> By default, when running Sneeffer locally (in a minikube setup), no change is needed to the configuration file. Make sure that `myNode` key in the configuration file matches to the machine running minikube (default value is `minikube`). In case your node name is different, update the configuration file located in `./configuration/SneefferConfigurationFile.txt`.
