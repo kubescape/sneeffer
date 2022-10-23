@@ -209,7 +209,7 @@ func getK8SIdentityTripplet(pod *core.Pod) k8sTripeletIdentity {
 }
 
 func (containerWatcher *ContainerWatcher) StartWatchingOnNewContainers() error {
-	logger.Print(logger.DEBUG, false, "sneeffer is ready to watch over node %s\n", containerWatcher.nodeName)
+	logger.Print(logger.INFO, false, "sneeffer is ready to watch over node %s\n", containerWatcher.nodeName)
 	watcher, err := containerWatcher.k8sClient.CoreV1().Pods("").Watch(global_data.GlobalHTTPContext, v1.ListOptions{})
 	if err != nil {
 		return err
@@ -227,7 +227,7 @@ func (containerWatcher *ContainerWatcher) StartWatchingOnNewContainers() error {
 		switch event.Type {
 		case watch.Modified:
 			for i := range pod.Status.ContainerStatuses {
-				if pod.Status.ContainerStatuses[i].Ready && !containerWatcher.isContainerWatched(pod.Status.ContainerStatuses[i].ContainerID) {
+				if *pod.Status.ContainerStatuses[i].Started && !containerWatcher.isContainerWatched(pod.Status.ContainerStatuses[i].ContainerID) {
 					if strings.Contains(pod.GetName(), "kubescape-sneeffer") {
 						continue
 					}
