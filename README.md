@@ -36,7 +36,7 @@ the ebpf-engine that the sneeffer is using can be find in following link: https:
     myNode=minikube
 
 ## installing and running steps to run as k8s daemonset
-1. kubectl apply -f ./kubescape_sneeffer_Daemonset.yaml
+1. kubectl apply -f ./kubescape_sneeffer_Daemonset.yaml - it will apply to default namespace
 
 ### for developers
 #### installing steps to run locally
