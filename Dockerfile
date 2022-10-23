@@ -11,6 +11,10 @@ WORKDIR /etc/syft_sc
 RUN git checkout v0.54.0
 RUN ./install.sh
 
+WORKDIR /etc/sneeffer
+ADD . .
+RUN go build -o kubescape_sneeffer .
+
 FROM falcosecurity/falco-no-driver:0.32.2
 
 RUN apt update
@@ -25,6 +29,6 @@ COPY ./resources/ /etc/sneeffer/resources/
 COPY --from=builder /etc/grype_sc/bin/grype /etc/sneeffer/resources/vuln/grype
 COPY --from=builder /etc/syft_sc/bin/syft /etc/sneeffer/resources/sbom/syft
 
-COPY ./kubescape_sneeffer /etc/sneeffer/kubescape_sneeffer
+COPY --from=builder /etc/sneeffer/kubescape_sneeffer /etc/sneeffer/kubescape_sneeffer
 WORKDIR /etc/sneeffer
 CMD [ "/etc/sneeffer/resources/entrypoint.sh" ]
