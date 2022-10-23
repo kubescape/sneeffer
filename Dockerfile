@@ -12,7 +12,8 @@ RUN ./install.sh v0.54.0
 RUN git clone https://github.com/kubescape/ebpf-engine /etc/kubescape_ebpf_engine_sc
 WORKDIR /etc/kubescape_ebpf_engine_sc
 RUN ./install_dependencies.sh
-RUN mkdir build && cd ./build
+RUN mkdir build
+WORKDIR /etc/kubescape_ebpf_engine_sc/build
 RUN cmake ..
 RUN make all
 
