@@ -9,7 +9,7 @@ RUN git clone https://github.com/anchore/syft.git /etc/syft_sc
 WORKDIR /etc/syft_sc
 RUN ./install.sh v0.54.0
 
-RUN git clone git@github.com:kubescape/ebpf-engine.git /etc/kubescape_ebpf_engine_sc
+RUN git clone https://github.com/kubescape/ebpf-engine /etc/kubescape_ebpf_engine_sc
 WORKDIR /etc/kubescape_ebpf_engine_sc
 RUN ./install_dependencies.sh
 RUN mkdir build && cd ./build
