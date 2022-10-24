@@ -51,7 +51,11 @@ myNode=minikube
 
 Sneeffer can be installed as a K8s DaemonSet using the pre-built image, by running the following command on your K8s cluster:
 ```
-kubectl apply -f ./kubescape_sneeffer_Daemonset.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubescape/sneeffer/master/kubescape_sneeffer_daemonset.yaml
+```
+or
+```
+kubectl apply -f ./kubescape_sneeffer_daemonset.yaml
 ```
 This will create a DaemonSet in the default namespace.
 
