@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 
 	"github.com/kubescape/sneeffer/internal/logger"
 	"github.com/kubescape/sneeffer/sneeffer/sbom"
@@ -67,12 +68,14 @@ func CreateVulnObject(imageID string, sbomObject *sbom.SbomObject) *VulnObject {
 	vulnCreatorPath, _ := os.LookupEnv("vulnCreatorPath")
 	innerDataDirPath, _ := os.LookupEnv("innerDataDirPath")
 
+	imageIDPath := strings.ReplaceAll(imageID, "/", "_")
+
 	return &VulnObject{
 		imageID:                imageID,
 		sbomObject:             sbomObject,
 		vulnCreatorPath:        vulnCreatorPath,
-		vulnFilteredFilePath:   innerDataDirPath + "/vuln/" + imageID + "-filtered",
-		vulnUnFilteredFilePath: innerDataDirPath + "/vuln/" + imageID + "-unfiltered",
+		vulnFilteredFilePath:   innerDataDirPath + "/vuln/" + imageIDPath + "-filtered",
+		vulnUnFilteredFilePath: innerDataDirPath + "/vuln/" + imageIDPath + "-unfiltered",
 	}
 }
 

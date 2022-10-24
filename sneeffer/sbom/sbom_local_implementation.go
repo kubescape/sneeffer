@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/kubescape/sneeffer/internal/logger"
 	"github.com/kubescape/sneeffer/sneeffer/utils"
@@ -23,11 +24,13 @@ func CreateSbomObject(imageID string) *SbomObject {
 	sbomCreatorPath, _ := os.LookupEnv("sbomCreatorPath")
 	innerDataDirPath, _ := os.LookupEnv("innerDataDirPath")
 
+	imageIDPath := strings.ReplaceAll(imageID, "/", "_")
+
 	return &SbomObject{
 		imageID:                imageID,
 		sbomCreateorPath:       sbomCreatorPath,
-		sbomFilteredFilePath:   innerDataDirPath + "/sbom/" + imageID + "-filtered",
-		sbomUnFilteredFilePath: innerDataDirPath + "/sbom/" + imageID + "-unfiltered",
+		sbomFilteredFilePath:   innerDataDirPath + "/sbom/" + imageIDPath + "-filtered",
+		sbomUnFilteredFilePath: innerDataDirPath + "/sbom/" + imageIDPath + "-unfiltered",
 	}
 }
 
