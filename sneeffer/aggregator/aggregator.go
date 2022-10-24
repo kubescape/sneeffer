@@ -81,9 +81,13 @@ func parseFileName(snifferData accumulator.MetadataAccumulator) string {
 	case "CAT=PROCESS":
 		if strings.HasPrefix(snifferData.SyscallType, "TYPE=execve(") {
 			fileName = between(snifferData.SyscallType, "filename: ", ")")
+		} else if strings.HasPrefix(snifferData.SyscallType, "TYPE=execve(") {
+			fileName = between(snifferData.SyscallType, "dirfd: <f>", ", pathname:")
 		}
 	case "CAT=FILE":
 		if strings.HasPrefix(snifferData.SyscallType, "TYPE=openat(") {
+			fileName = between(snifferData.SyscallType, "name: ", ", flags")
+		} else if strings.HasPrefix(snifferData.SyscallType, "TYPE=open(") {
 			fileName = between(snifferData.SyscallType, "name: ", ", flags")
 		}
 	default:
@@ -104,5 +108,6 @@ func (aggregator *Aggregator) GetContainerRealtimeFileList() []string {
 	}
 
 	logger.Print(logger.DEBUG, false, "GetContainerRealtimeFileList: list size %d\n", len(snifferRealtimeFileList))
+	logger.Print(logger.DEBUG, false, "GetContainerRealtimeFileList: list %v\n", snifferRealtimeFileList)
 	return snifferRealtimeFileList
 }
