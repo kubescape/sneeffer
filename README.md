@@ -23,7 +23,7 @@ Follow the steps below for every cluster node:
 |`snifferEngineLoaderPath`| Path of binary loader of the kernel object to the container|
 |`sbomCreatorPath`  | Path of binary which creates the SBOM (list of files existing in the image)|
 |`vulnCreatorPath`  | Path of binary which downloads the CVEs in the image|
-|`snifferTime`      | Monitoring time of the created container (seconds)|
+|`snifferTime`      | Monitoring time of the created container (minutes)|
 |`loggerVerbose`    | Log verbose|
 |`crdFullDetailedPath`| CRD yaml file path of the detailed runtime CVE data|
 |`crdVulnSummaryPath` | CRD yaml file path of the summary runtime CVE data|
