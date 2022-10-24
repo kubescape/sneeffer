@@ -49,5 +49,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("fail to create container watcher %v", err)
 	}
-	containerWatcher.StartWatchingOnNewContainers()
+	err = containerWatcher.StartWatchingOnNewContainers()
+	if err != nil {
+		log.Fatalf("StartWatchingOnNewContainers fail on error %v", err)
+	}
 }
