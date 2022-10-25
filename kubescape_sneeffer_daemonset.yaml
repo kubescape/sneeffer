@@ -40,7 +40,7 @@ data:
     snifferEngineLoaderPath=/etc/sneeffer/resources/ebpf/sniffer
     sbomCreatorPath=/etc/sneeffer/resources/sbom/syft
     vulnCreatorPath=/etc/sneeffer/resources/vuln/grype
-    snifferTime=1
+    snifferTime=5
     loggerVerbose=INFO
     crdFullDetailedPath=/etc/sneeffer/resources/k8s/crd-vuln-full-detailes.yaml
     crdVulnSummaryPath=/etc/sneeffer/resources/k8s/crd-vuln-summary.yaml
@@ -59,6 +59,7 @@ spec:
     metadata:
       labels:
         app: kubescape-sneeffer
+        alt-name: kubescape-sneeffer
     spec:
       serviceAccountName: kubescape-sneeffer-service-account
       automountServiceAccountToken: true
