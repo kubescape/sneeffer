@@ -1,6 +1,7 @@
 package k8s_watcher
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,13 +9,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/docker/api/types"
 	"github.com/kubescape/sneeffer/internal/logger"
 	"github.com/kubescape/sneeffer/sneeffer/DB"
 	"github.com/kubescape/sneeffer/sneeffer/aggregator"
 	global_data "github.com/kubescape/sneeffer/sneeffer/global_data/k8s"
 	"github.com/kubescape/sneeffer/sneeffer/sbom"
 	"github.com/kubescape/sneeffer/sneeffer/vuln"
+	apiextension "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 
+	"github.com/kubescape/k8s-interface/cloudsupport"
 	core "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
@@ -32,7 +36,7 @@ const (
 type k8sTripeletIdentity struct {
 	namespace       string
 	k8sAncestorType string
-	ancestorName    string
+	imageName       string
 }
 
 type watchedContainer struct {
@@ -118,7 +122,7 @@ func getImageID(imageID string) string {
 }
 
 func getK8SResourceName(containerData *watchedContainer) string {
-	return "namespace-" + containerData.k8sIdentity.namespace + "." + containerData.k8sIdentity.k8sAncestorType + "-" + containerData.k8sIdentity.ancestorName + ".name-" + containerData.podName
+	return "namespace-" + containerData.k8sIdentity.namespace + "." + containerData.k8sIdentity.k8sAncestorType + ".imagename-" + containerData.k8sIdentity.imageName
 }
 
 func (containerWatcher *ContainerWatcher) afterTimerActions(containerID string, resourceName string) error {
@@ -196,19 +200,126 @@ func (containerWatcher *ContainerWatcher) StartFindRelaventCVEsInRuntime(contain
 	go containerWatcher.startTimer(containerID, resourceName)
 }
 
-func getK8SIdentityTripplet(pod *core.Pod) k8sTripeletIdentity {
+func connectToK8sApiextension() (*apiextension.Clientset, error) {
+	var err error
+	var home string
+	var exist bool
+	var configPath string
 
-	ancestorName := pod.GetName()
-	k8sAncestorType := "deployment"
-	ancestorSplittedName := strings.Split(pod.GetName(), "-")
-	if len(ancestorSplittedName) > 0 {
-		ancestorName = ancestorSplittedName[0]
+	restConfig, err := rest.InClusterConfig()
+	if err != nil {
+		logger.Print(logger.DEBUG, false, "InClusterConfig err %v\n", err)
+		home, exist = os.LookupEnv("HOME")
+		if !exist {
+			home = "/root"
+		}
+		configPath = filepath.Join(home, ".kube", "config")
+		restConfig, err = clientcmd.BuildConfigFromFlags("", configPath)
+		if err != nil {
+			return nil, err
+		}
 	}
 
+	clientset, err := apiextension.NewForConfig(restConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return clientset, nil
+}
+
+func (containerWatcher *ContainerWatcher) GetOwnerData(name string, kind string, namespace string) *[]string {
+	switch kind {
+	case "Deployment":
+		options := v1.GetOptions{}
+		depDet, err := containerWatcher.k8sClient.AppsV1().Deployments(namespace).Get(global_data.GlobalHTTPContext, name, options)
+		if err != nil {
+			logger.Print(logger.WARNING, false, "GetOwnerData Deployments: %s\n", err.Error())
+			return nil
+		}
+		return &[]string{kind, depDet.GetName()}
+	case "DaemonSet":
+		options := v1.GetOptions{}
+		daemSetDet, err := containerWatcher.k8sClient.AppsV1().DaemonSets(namespace).Get(global_data.GlobalHTTPContext, name, options)
+		if err != nil {
+			logger.Print(logger.WARNING, false, "GetOwnerData DaemonSets: %s\n", err.Error())
+			return nil
+		}
+		return &[]string{kind, daemSetDet.GetName()}
+	case "StatefulSet":
+		options := v1.GetOptions{}
+		statSetDet, err := containerWatcher.k8sClient.AppsV1().StatefulSets(namespace).Get(global_data.GlobalHTTPContext, name, options)
+		if err != nil {
+			logger.Print(logger.WARNING, false, "GetOwnerData StatefulSets: %s\n", err.Error())
+			return nil
+		}
+		return &[]string{kind, statSetDet.GetName()}
+	case "Job":
+		options := v1.GetOptions{}
+		jobDet, err := containerWatcher.k8sClient.BatchV1().Jobs(namespace).Get(global_data.GlobalHTTPContext, name, options)
+		if err != nil {
+			logger.Print(logger.WARNING, false, "GetOwnerData Jobs: %s\n", err.Error())
+			return nil
+		}
+		if len(jobDet.GetObjectMeta().GetOwnerReferences()) > 0 {
+			return containerWatcher.GetOwnerData(jobDet.GetObjectMeta().GetOwnerReferences()[0].Name, jobDet.GetObjectMeta().GetOwnerReferences()[0].Kind, jobDet.GetNamespace())
+		}
+		return &[]string{kind, jobDet.GetName()}
+	case "CronJob":
+		options := v1.GetOptions{}
+		cronJobDet, err := containerWatcher.k8sClient.BatchV1beta1().CronJobs(namespace).Get(global_data.GlobalHTTPContext, name, options)
+		if err != nil {
+			logger.Print(logger.WARNING, false, "GetOwnerData CronJobs: %s\n", err.Error())
+			return nil
+		}
+		return &[]string{kind, cronJobDet.GetName()}
+	case "Pod", "Node":
+		return &[]string{kind, name}
+	case "ReplicaSet":
+		repItem, err := containerWatcher.k8sClient.AppsV1().ReplicaSets(namespace).Get(global_data.GlobalHTTPContext, name, v1.GetOptions{})
+		if err != nil {
+			logger.Print(logger.WARNING, false, "GetOwnerData Pods: %s\n", err.Error())
+			return nil
+		}
+		return containerWatcher.GetOwnerData(repItem.GetObjectMeta().GetOwnerReferences()[0].Name, repItem.GetObjectMeta().GetOwnerReferences()[0].Kind, repItem.GetNamespace())
+	default:
+		client, err := connectToK8sApiextension()
+		if err != nil {
+			logger.Print(logger.WARNING, false, "GetOwnerData connectToK8sApiextension: %s\n", err.Error())
+			return nil
+		}
+		crds, err := client.ApiextensionsV1().CustomResourceDefinitions().List(context.Background(), v1.ListOptions{})
+		if err != nil {
+			logger.Print(logger.WARNING, false, "GetOwnerData CustomResourceDefinitions: %s\n", err.Error())
+			return nil
+		}
+		for crdIdx := range crds.Items {
+			if crds.Items[crdIdx].Status.AcceptedNames.Kind == kind {
+				return &[]string{crds.Items[crdIdx].GetObjectKind().GroupVersionKind().Kind, crds.Items[crdIdx].GetName()}
+			}
+		}
+		logger.Print(logger.WARNING, false, "GetOwnerData unknown k8s type: %s\n", err.Error())
+		return nil
+	}
+}
+
+func (containerWatcher *ContainerWatcher) getK8SIdentityTripplet(pod *core.Pod, imageName string) k8sTripeletIdentity {
+	var k8sAncestor *[]string
+
+	if len(pod.GetOwnerReferences()) != 0 {
+		k8sAncestor = containerWatcher.GetOwnerData(pod.GetOwnerReferences()[0].Name, pod.GetOwnerReferences()[0].Kind, pod.GetNamespace())
+		if k8sAncestor == nil {
+			k8sAncestor = &[]string{"unknownType", "unknownName"}
+		}
+	} else {
+		k8sAncestor = &[]string{"Pod", pod.GetName()}
+	}
+
+	logger.Print(logger.DEBUG, false, "getK8SIdentityTripplet: namespace-%s/%s/imageName-%s\n", pod.Namespace, (*k8sAncestor)[0]+"-"+(*k8sAncestor)[1], imageName)
 	return k8sTripeletIdentity{
 		namespace:       pod.Namespace,
-		k8sAncestorType: k8sAncestorType,
-		ancestorName:    ancestorName,
+		k8sAncestorType: strings.ToLower((*k8sAncestor)[0]) + "-" + (*k8sAncestor)[1],
+		imageName:       imageName,
 	}
 }
 
@@ -244,19 +355,32 @@ func (containerWatcher *ContainerWatcher) StartWatchingOnNewContainers() error {
 						if strings.Contains(pod.GetName(), "kubescape-sneeffer") {
 							continue
 						}
-						sbomObject := sbom.CreateSbomObject(getImageID(pod.Status.ContainerStatuses[i].ImageID))
+						secrets, err := cloudsupport.GetImageRegistryCredentials(pod.Status.ContainerStatuses[i].Image, pod)
+						if err != nil {
+							logger.Print(logger.WARNING, false, "StartWatchingOnNewContainers GetImageRegistryCredentialsfaled with err %v\n", err)
+						}
+						credentialslist := make([]types.AuthConfig, 0)
+						for secretName := range secrets {
+							secret := secrets[secretName]
+							if secret.Username != "" && secret.Password != "" {
+								secret.Auth = ""
+							}
+							credentialslist = append(credentialslist, secret)
+						}
+
+						sbomObject := sbom.CreateSbomObject(credentialslist, getImageID(pod.Status.ContainerStatuses[i].ImageID))
 						containerWatcher.watchedContainers[pod.Status.ContainerStatuses[i].ContainerID] = &watchedContainer{
 							containerAggregator: aggregator.CreateAggregator(getShortContainerID(pod.Status.ContainerStatuses[i].ContainerID), pod.Status.ContainerStatuses[i].State.Running.StartedAt),
 							sbomObject:          sbomObject,
-							vulnObject:          vuln.CreateVulnObject(getImageID(pod.Status.ContainerStatuses[i].ImageID), sbomObject),
+							vulnObject:          vuln.CreateVulnObject(credentialslist, getImageID(pod.Status.ContainerStatuses[i].ImageID), sbomObject),
 							imageID:             pod.Status.ContainerStatuses[i].ImageID,
 							podName:             pod.Name,
 							snifferTimer:        containerWatcher.createTimer(),
-							k8sIdentity:         getK8SIdentityTripplet(pod),
+							k8sIdentity:         containerWatcher.getK8SIdentityTripplet(pod, pod.Status.ContainerStatuses[i].Image),
 							syncChannel: map[string]chan error{
-								STEP_GET_SBOM:           make(chan error),
-								STEP_GET_UNFILTER_VULNS: make(chan error),
-								STEP_GET_SNIFFER_DATA:   make(chan error),
+								STEP_GET_SBOM:           make(chan error, 10),
+								STEP_GET_UNFILTER_VULNS: make(chan error, 10),
+								STEP_GET_SNIFFER_DATA:   make(chan error, 10),
 							},
 						}
 

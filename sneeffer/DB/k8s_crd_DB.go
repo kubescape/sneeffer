@@ -3,6 +3,8 @@ package DB
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 
 	"github.com/kubescape/sneeffer/internal/logger"
 	global_data "github.com/kubescape/sneeffer/sneeffer/global_data/k8s"
@@ -22,8 +24,9 @@ import (
 )
 
 const (
-	summaryType      = "summary"
-	fullDetailedType = "fullDetailed"
+	summaryType                    = "summary"
+	fullDetailedType               = "fullDetailed"
+	allowedCharsForK8sResourceName = "abcdefghijklmnopqrstuvwxyz0123456789-."
 )
 
 type DBClient struct {
@@ -153,7 +156,7 @@ func connectToDB() error {
 
 	restConfig, err = rest.InClusterConfig()
 	if err != nil {
-		logger.Print(logger.INFO, false, "InClusterConfig err %v\n", err)
+		logger.Print(logger.DEBUG, false, "InClusterConfig err %v\n", err)
 		home, exist = os.LookupEnv("HOME")
 		if !exist {
 			home = "/root"
@@ -225,6 +228,9 @@ func SetDataInDB(vulnData *vuln.ProccesedVulnData, resourceName string) error {
 		return err
 	}
 
+	resourceName = strings.ReplaceAll(resourceName, ":", ".tag-")
+	resourceName = utils.ReplaceChars(resourceName, allowedCharsForK8sResourceName, "-")
+
 	CRSummaryClient, err := newCRClient(summaryType)
 	if err != nil {
 		return err
@@ -252,7 +258,25 @@ func SetDataInDB(vulnData *vuln.ProccesedVulnData, resourceName string) error {
 
 	err = CRSummaryClient.restClient.Post().Resource(getPluralName(summaryType)).Body(vulnSummary).Do(global_data.GlobalHTTPContext).Into(&vulnSummaryResult)
 	if err != nil {
-		return err
+		if strings.Contains(err.Error(), "already exists") {
+			logger.Print(logger.INFO, false, "%s already exists, check if need to update vulns\n", resourceName)
+			err = CRSummaryClient.restClient.Get().Resource(getPluralName(summaryType)).Name(resourceName).Do(global_data.GlobalHTTPContext).Into(&vulnSummaryResult)
+			if err != nil {
+				logger.Print(logger.WARNING, false, "fail to get resource %s for check if update needed with err %v\n", resourceName, err)
+			} else {
+				if equal := reflect.DeepEqual(vulnSummaryResult.Spec, vulnSummary.Spec); !equal {
+					logger.Print(logger.INFO, false, "the vuln data of resource %s has changed, updating\n", resourceName)
+					err = CRSummaryClient.restClient.Put().Resource(getPluralName(summaryType)).Body(vulnSummary).Do(global_data.GlobalHTTPContext).Into(&vulnSummaryResult)
+					if err != nil {
+						logger.Print(logger.ERROR, false, "fail to update resource %s with err %v\n", resourceName, err)
+					}
+				} else {
+					logger.Print(logger.INFO, false, "the vuln data of resource %s not changed, no update is needed\n", resourceName)
+				}
+			}
+		} else {
+			return err
+		}
 	}
 	logger.Print(logger.INFO, false, "please run the following command to see the result summary: kubectl get %s.%s %s -o yaml\n", getPluralName(summaryType), getGroupName(summaryType), resourceName)
 
@@ -275,7 +299,25 @@ func SetDataInDB(vulnData *vuln.ProccesedVulnData, resourceName string) error {
 
 	err = CRFullDetailedClient.restClient.Post().Resource(getPluralName(fullDetailedType)).Body(vulnFullDetailed).Do(global_data.GlobalHTTPContext).Into(&vulnFullDetailedResult)
 	if err != nil {
-		return err
+		if strings.Contains(err.Error(), "already exists") {
+			logger.Print(logger.INFO, false, "%s already exists, check if need to update vulns\n", resourceName)
+			err = CRFullDetailedClient.restClient.Get().Resource(getPluralName(fullDetailedType)).Name(resourceName).Do(global_data.GlobalHTTPContext).Into(&vulnFullDetailedResult)
+			if err != nil {
+				logger.Print(logger.WARNING, false, "fail to get resource %s for check if update needed with err %v\n", resourceName, err)
+			} else {
+				if equal := reflect.DeepEqual(vulnFullDetailedResult.Spec, vulnFullDetailed.Spec); !equal {
+					logger.Print(logger.INFO, false, "the vuln data of resource %s has changed, updating\n", resourceName)
+					err = CRFullDetailedClient.restClient.Put().Resource(getPluralName(fullDetailedType)).Body(vulnFullDetailed).Do(global_data.GlobalHTTPContext).Into(&vulnFullDetailedResult)
+					if err != nil {
+						logger.Print(logger.ERROR, false, "fail to resource resource %s with err %v\n", resourceName, err)
+					}
+				} else {
+					logger.Print(logger.INFO, false, "the vuln data of resource %s not changed, no update is needed\n", resourceName)
+				}
+			}
+		} else {
+			return err
+		}
 	}
 
 	logger.Print(logger.INFO, false, "please run the following command to see the result in full detaileds: kubectl get %s.%s %s -o yaml\n", getPluralName(fullDetailedType), getGroupName(fullDetailedType), resourceName)

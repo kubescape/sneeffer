@@ -1,25 +1,44 @@
-configpath: ""
 output: json
-outputtemplatefile: ""
-scopeopt: ""
-scope: Squashed
+file: ""
+distro: ""
+add-cpes-if-none: false
+output-template-file: ""
 quiet: false
-log:
-    structured: false
-    levelopt: 0
-    level: trace
-    filelocation: ""
-clioptions:
-    verbosity: 0
+check-for-app-update: false
+only-fixed: false
+only-notfixed: false
+platform: ""
+search:
+  scope: "Squashed"
+  unindexed-archives: false
+  indexed-archives: false
+ignore: []
+exclude: []
 db:
+  cache-dir: ./db
+  update-url: https://toolbox-data.anchore.io/grype/databases/listing.json
+  ca-cert: ""
   auto-update: true
-  cache-dir: "./db"
-  update-url: "https://toolbox-data.anchore.io/grype/databases/listing.json"
-  validatebyhashonstart: false
+  validate-by-hash-on-start: false
+  validate-age: false
+  max-allowed-built-age: 0s
+external-sources:
+  enable: false
+  maven:
+    search-upstream: false
+    base-url: ""
 dev:
-    profilecpu: false
-checkforappupdate: true
+  profile-cpu: false
+  profile-mem: false
+fail-on-severity: ""
 registry:
-    insecure-skip-tls-verify: false
-    insecure-use-http: false
-    auth: []
+  insecure-skip-tls-verify: false
+  insecure-use-http: false
+  auth: []
+log:
+  structured: false
+  level: trace
+  file: ""
+attestation:
+  public-key: ""
+  skip-verification: false

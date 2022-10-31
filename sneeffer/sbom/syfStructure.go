@@ -2,7 +2,7 @@ package sbom
 
 import (
 	"github.com/anchore/syft/syft/file"
-	"github.com/anchore/syft/syft/pkg"
+	syft_pkg "github.com/anchore/syft/syft/pkg"
 	"github.com/anchore/syft/syft/source"
 )
 
@@ -76,27 +76,27 @@ type Relationship struct {
 	Metadata interface{} `json:"metadata,omitempty"`
 }
 
-// PackageCustomData contains ambiguous values (type-wise) from pkg.Package.
+// PackageCustomData contains ambiguous values (type-wise) from syft_pkg.Package.
 type PackageCustomData struct {
-	MetadataType pkg.MetadataType `json:"metadataType,omitempty"`
-	Metadata     interface{}      `json:"metadata,omitempty"`
+	MetadataType syft_pkg.MetadataType `json:"metadataType,omitempty"`
+	Metadata     interface{}           `json:"metadata,omitempty"`
 }
 
-// PackageBasicData contains non-ambiguous values (type-wise) from pkg.Package.
+// PackageBasicData contains non-ambiguous values (type-wise) from syft_pkg.Package.
 type PackageBasicData struct {
 	ID        string               `json:"id"`
 	Name      string               `json:"name"`
 	Version   string               `json:"version"`
-	Type      pkg.Type             `json:"type"`
+	Type      syft_pkg.Type        `json:"type"`
 	FoundBy   string               `json:"foundBy"`
 	Locations []source.Coordinates `json:"locations"`
 	Licenses  []string             `json:"licenses"`
-	Language  pkg.Language         `json:"language"`
+	Language  syft_pkg.Language    `json:"language"`
 	CPEs      []string             `json:"cpes"`
 	PURL      string               `json:"purl"`
 }
 
-// Package represents a pkg.Package object specialized for JSON marshaling and unmarshalling.
+// Package represents a syft_pkg.Package object specialized for JSON marshaling and unmarshalling.
 type Package struct {
 	PackageBasicData
 	PackageCustomData

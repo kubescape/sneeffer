@@ -4,14 +4,22 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"math/rand"
 	"os"
 	"os/exec"
+	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/docker/docker/api/types"
 	"github.com/kubescape/sneeffer/internal/logger"
 	"github.com/kubescape/sneeffer/sneeffer/sbom"
 	"github.com/kubescape/sneeffer/sneeffer/utils"
+	"github.com/xyproto/randomstring"
+	"gopkg.in/yaml.v2"
 
 	"github.com/anchore/grype/grype/presenter/models"
 )
@@ -61,10 +69,12 @@ type VulnObject struct {
 	vulnData               []byte
 	vulnFilteredFilePath   string
 	vulnUnFilteredFilePath string
+	vulnConfigDirPath      string
+	credentialslist        []types.AuthConfig
 	parsedVulnData         *ProccesedVulnData
 }
 
-func CreateVulnObject(imageID string, sbomObject *sbom.SbomObject) *VulnObject {
+func CreateVulnObject(credentialslist []types.AuthConfig, imageID string, sbomObject *sbom.SbomObject) *VulnObject {
 	vulnCreatorPath, _ := os.LookupEnv("vulnCreatorPath")
 	innerDataDirPath, _ := os.LookupEnv("innerDataDirPath")
 
@@ -76,33 +86,112 @@ func CreateVulnObject(imageID string, sbomObject *sbom.SbomObject) *VulnObject {
 		vulnCreatorPath:        vulnCreatorPath,
 		vulnFilteredFilePath:   innerDataDirPath + "/vuln/" + imageIDPath + "-filtered",
 		vulnUnFilteredFilePath: innerDataDirPath + "/vuln/" + imageIDPath + "-unfiltered",
+		credentialslist:        credentialslist,
+		vulnConfigDirPath:      filepath.Dir(vulnCreatorPath),
 	}
+}
+
+func (vuln *VulnObject) copyFileData(anchoreConfigPath string) error {
+	source, err := os.Open(path.Join(vuln.vulnConfigDirPath, ".grype", "config.yaml"))
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+
+	destination, err := os.Create(anchoreConfigPath)
+	if err != nil {
+		return err
+	}
+	defer destination.Close()
+	_, err = io.Copy(destination, source)
+	return err
+}
+
+func (vuln *VulnObject) addCredentialsToAnchoreConfigurationFile(configFilePath string, cred types.AuthConfig) error {
+	var App Application
+
+	bytes, err := ioutil.ReadFile(configFilePath)
+	if err != nil {
+		return err
+	}
+	err = yaml.Unmarshal(bytes, &App)
+	if err != nil {
+		return err
+	}
+
+	regCred := RegistryCredentials{}
+
+	if cred.Auth != "" {
+		regCred.Authority = cred.Auth
+	}
+	if cred.RegistryToken != "" {
+		regCred.Token = cred.RegistryToken
+	}
+	if cred.Username != "" && cred.Password != "" {
+		regCred.Username = cred.Username
+		regCred.Password = cred.Password
+	}
+	if equal := (regCred == RegistryCredentials{}); !equal {
+		App.Registry.Auth = append(App.Registry.Auth, regCred)
+	}
+	if len(App.Registry.Auth) == 0 {
+		return fmt.Errorf("no credentials added")
+	}
+
+	config_yaml_data, _ := yaml.Marshal(&App)
+	err = ioutil.WriteFile(configFilePath, config_yaml_data, 0755)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (vuln *VulnObject) GetImageVulnerabilities(errChan chan error) bool {
 	stdout := bytes.Buffer{}
 	stderr := bytes.Buffer{}
 
-	cmd := exec.Command(vuln.vulnCreatorPath, vuln.imageID, "-o", "json")
+	configFileName := randomstring.HumanFriendlyEnglishString(rand.Intn(100)) + ".yaml"
+	anchoreConfigPath := path.Join(vuln.vulnConfigDirPath, ".grype", configFileName)
+	err := vuln.copyFileData(anchoreConfigPath)
+	if err != nil {
+		logger.Print(logger.ERROR, false, "failed to copy default file config to %v with err %v\n", anchoreConfigPath, err)
+		os.Remove(anchoreConfigPath)
+		return false
+	}
+
+	for i := 0; i != len(vuln.credentialslist); i++ {
+		err := vuln.addCredentialsToAnchoreConfigurationFile(anchoreConfigPath, vuln.credentialslist[i])
+		if err != nil {
+			logger.Print(logger.ERROR, false, "failed to copy default file config to %v with err %v\n", anchoreConfigPath, err)
+			os.Remove(anchoreConfigPath)
+			return false
+		}
+	}
+
+	cmd := exec.Command(vuln.vulnCreatorPath, vuln.imageID, "-o", "json", "-c", anchoreConfigPath)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	logger.Print(logger.INFO, false, "start vuln command for image %s\n", vuln.imageID)
 	logger.Print(logger.DEBUG, false, "cmd.Args %s\n", cmd.Args)
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		logger.Print(logger.ERROR, false, "GetImageVulnerabilities: vuln finder process fail with error %v\n", err)
-		errChan <- fmt.Errorf("GetImageVulnerabilities process failed with error %v, stderr: %s", err, stderr.String())
+		os.Remove(anchoreConfigPath)
+		errChan <- fmt.Errorf("GetImageVulnerabilities process failed with error %v, stderr: %s \nstdout:%s", err, stderr.String(), stdout.String())
 		return false
 	}
 	vuln.vulnData = stdout.Bytes()
 	err = utils.SaveDataToFile(vuln.vulnData, vuln.vulnUnFilteredFilePath)
 	if err != nil {
 		logger.Print(logger.ERROR, false, "GetFilterVulnerabilities: Error: failed to save filtered vuln to file with error: %v", err)
+		os.Remove(anchoreConfigPath)
 		errChan <- fmt.Errorf("GetImageVulnerabilities failed with error %v", err)
 		return false
 	}
 	logger.Print(logger.INFO, false, "the unfiltered vuln getting finished successesfully for image %s\n", vuln.imageID)
+	os.Remove(anchoreConfigPath)
 	errChan <- nil
 	return true
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/kubescape/sneeffer/internal/logger"
 	"github.com/kubescape/sneeffer/sneeffer/accumulator"
+	"github.com/kubescape/sneeffer/sneeffer/utils"
 )
 
 type Aggregator struct {
@@ -58,37 +59,20 @@ func (aggregator *Aggregator) StopAggregate() error {
 	return nil
 }
 
-func between(value string, a string, b string) string {
-	// Get substring between two strings.
-	posFirst := strings.Index(value, a)
-	if posFirst == -1 {
-		return ""
-	}
-	posLast := strings.Index(value, b)
-	if posLast == -1 {
-		return ""
-	}
-	posFirstAdjusted := posFirst + len(a)
-	if posFirstAdjusted >= posLast {
-		return ""
-	}
-	return value[posFirstAdjusted:posLast]
-}
-
 func parseFileName(snifferData accumulator.MetadataAccumulator) string {
 	fileName := ""
 	switch snifferData.SyscallCategory {
 	case "CAT=PROCESS":
 		if strings.HasPrefix(snifferData.SyscallType, "TYPE=execve(") {
-			fileName = between(snifferData.SyscallType, "filename: ", ")")
+			fileName = utils.Between(snifferData.SyscallType, "filename: ", ")")
 		} else if strings.HasPrefix(snifferData.SyscallType, "TYPE=execve(") {
-			fileName = between(snifferData.SyscallType, "dirfd: <f>", ", pathname:")
+			fileName = utils.Between(snifferData.SyscallType, "dirfd: <f>", ", pathname:")
 		}
 	case "CAT=FILE":
 		if strings.HasPrefix(snifferData.SyscallType, "TYPE=openat(") {
-			fileName = between(snifferData.SyscallType, "name: ", ", flags")
+			fileName = utils.Between(snifferData.SyscallType, "name: ", ", flags")
 		} else if strings.HasPrefix(snifferData.SyscallType, "TYPE=open(") {
-			fileName = between(snifferData.SyscallType, "name: ", ", flags")
+			fileName = utils.Between(snifferData.SyscallType, "name: ", ", flags")
 		}
 	default:
 		logger.Print(logger.ERROR, false, "parseFileName: unknown SyscallCategory\n")
