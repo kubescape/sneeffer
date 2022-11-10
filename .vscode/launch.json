@@ -11,8 +11,11 @@
             "mode": "auto",
             "program": "${workspaceFolder}", 
             "env": {
-                "SNEEFFER_CONF_FILE_PATH": "${workspaceFolder}/configuration/SneefferConfigurationFile.txt"
-            }
+                "SNEEFFER_CONF_FILE_PATH": "${workspaceFolder}/configuration/SneefferConfigurationFile.txt",
+                "HOME": "/home/raziel"
+            },
+            "console": "integratedTerminal",
+            "asRoot": true
         }
     ]
 }
