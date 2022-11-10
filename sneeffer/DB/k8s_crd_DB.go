@@ -266,7 +266,8 @@ func SetDataInDB(vulnData *vuln.ProccesedVulnData, resourceName string) error {
 			} else {
 				if equal := reflect.DeepEqual(vulnSummaryResult.Spec, vulnSummary.Spec); !equal {
 					logger.Print(logger.INFO, false, "the vuln data of resource %s has changed, updating\n", resourceName)
-					err = CRSummaryClient.restClient.Put().Resource(getPluralName(summaryType)).Body(vulnSummary).Do(global_data.GlobalHTTPContext).Into(&vulnSummaryResult)
+					vulnSummary.ObjectMeta.ResourceVersion = vulnSummaryResult.GetObjectMeta().GetResourceVersion()
+					err = CRSummaryClient.restClient.Put().Resource(getPluralName(summaryType)).Name(vulnSummary.GetName()).Body(vulnSummary).Do(global_data.GlobalHTTPContext).Into(&vulnSummaryResult)
 					if err != nil {
 						logger.Print(logger.ERROR, false, "fail to update resource %s with err %v\n", resourceName, err)
 					}
@@ -307,7 +308,8 @@ func SetDataInDB(vulnData *vuln.ProccesedVulnData, resourceName string) error {
 			} else {
 				if equal := reflect.DeepEqual(vulnFullDetailedResult.Spec, vulnFullDetailed.Spec); !equal {
 					logger.Print(logger.INFO, false, "the vuln data of resource %s has changed, updating\n", resourceName)
-					err = CRFullDetailedClient.restClient.Put().Resource(getPluralName(fullDetailedType)).Body(vulnFullDetailed).Do(global_data.GlobalHTTPContext).Into(&vulnFullDetailedResult)
+					vulnFullDetailed.ObjectMeta.ResourceVersion = vulnFullDetailedResult.GetObjectMeta().GetResourceVersion()
+					err = CRFullDetailedClient.restClient.Put().Resource(getPluralName(fullDetailedType)).Name(vulnFullDetailed.GetName()).Body(vulnFullDetailed).Do(global_data.GlobalHTTPContext).Into(&vulnFullDetailedResult)
 					if err != nil {
 						logger.Print(logger.ERROR, false, "fail to resource resource %s with err %v\n", resourceName, err)
 					}
