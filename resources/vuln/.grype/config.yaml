@@ -15,7 +15,7 @@ search:
 ignore: []
 exclude: []
 db:
-  cache-dir: ./db
+  cache-dir: ./resources/vuln/.grype/db
   update-url: https://toolbox-data.anchore.io/grype/databases/listing.json
   ca-cert: ""
   auto-update: true

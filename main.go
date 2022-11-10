@@ -9,6 +9,7 @@ import (
 	"github.com/kubescape/sneeffer/sneeffer/DB"
 	"github.com/kubescape/sneeffer/sneeffer/accumulator"
 	"github.com/kubescape/sneeffer/sneeffer/k8s_watcher"
+	"github.com/kubescape/sneeffer/sneeffer/vuln"
 
 	"github.com/kubescape/sneeffer/internal/config"
 )
@@ -21,6 +22,11 @@ func waitOnCacheAccumulatorProccessErrorCode(cacheAccumulatorErrorChan chan erro
 	}
 }
 
+func startingOperations() error {
+	err := vuln.DownloadVulnDB()
+	return err
+}
+
 func main() {
 	err := config.ParseConfiguration()
 	if err != nil {
@@ -30,6 +36,11 @@ func main() {
 	err = validator.CheckPrerequsits()
 	if err != nil {
 		log.Fatalf("error during check prerequisites: %v", err)
+	}
+
+	err = startingOperations()
+	if err != nil {
+		log.Fatalf("error during DB initialization: %v", err)
 	}
 
 	err = DB.CreateCRDs()

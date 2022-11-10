@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/docker/docker/api/types"
 	"github.com/kubescape/sneeffer/internal/logger"
@@ -72,6 +73,41 @@ type VulnObject struct {
 	vulnConfigDirPath      string
 	credentialslist        []types.AuthConfig
 	parsedVulnData         *ProccesedVulnData
+}
+
+var mutexDBIsReady chan bool
+var DBIsReady bool
+var mutexVulnProcess sync.Mutex
+
+func informDatabaseIsReadyToUse(ready bool) {
+	DBIsReady = ready
+	mutexDBIsReady <- ready
+}
+
+func DownloadVulnDB() error {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	mutexDBIsReady = make(chan bool, 10)
+	DBIsReady = false
+	vulnCreatorPath, _ := os.LookupEnv("vulnCreatorPath")
+	vulnConfigPath := path.Join(vulnCreatorPath, "..", ".grype", "config.yaml")
+
+	cmd := exec.Command(vulnCreatorPath, "db", "update", "-c", vulnConfigPath)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	logger.Print(logger.DEBUG, false, "start vuln db update\n")
+	err := cmd.Run()
+	if err != nil {
+		informDatabaseIsReadyToUse(false)
+		logger.Print(logger.ERROR, false, "GetImageVulnerabilities process failed with error %v, stderr: %s \nstdout:%s", err, stderr.String(), stdout.String())
+		return err
+	}
+
+	logger.Print(logger.DEBUG, false, "vuln DB updated successfully\n")
+	informDatabaseIsReadyToUse(true)
+	return nil
 }
 
 func CreateVulnObject(credentialslist []types.AuthConfig, imageID string, sbomObject *sbom.SbomObject) *VulnObject {
@@ -151,6 +187,15 @@ func (vuln *VulnObject) GetImageVulnerabilities(errChan chan error) bool {
 	stdout := bytes.Buffer{}
 	stderr := bytes.Buffer{}
 
+	if !DBIsReady {
+		ready := <-mutexDBIsReady
+		if ready {
+			mutexDBIsReady <- true
+		} else {
+			return false
+		}
+	}
+
 	configFileName := randomstring.HumanFriendlyEnglishString(rand.Intn(100)) + ".yaml"
 	anchoreConfigPath := path.Join(vuln.vulnConfigDirPath, ".grype", configFileName)
 	err := vuln.copyFileData(anchoreConfigPath)
@@ -173,6 +218,7 @@ func (vuln *VulnObject) GetImageVulnerabilities(errChan chan error) bool {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	mutexVulnProcess.Lock()
 	logger.Print(logger.INFO, false, "start vuln command for image %s\n", vuln.imageID)
 	logger.Print(logger.DEBUG, false, "cmd.Args %s\n", cmd.Args)
 	err = cmd.Run()
@@ -182,6 +228,8 @@ func (vuln *VulnObject) GetImageVulnerabilities(errChan chan error) bool {
 		errChan <- fmt.Errorf("GetImageVulnerabilities process failed with error %v, stderr: %s \nstdout:%s", err, stderr.String(), stdout.String())
 		return false
 	}
+	mutexVulnProcess.Unlock()
+
 	vuln.vulnData = stdout.Bytes()
 	err = utils.SaveDataToFile(vuln.vulnData, vuln.vulnUnFilteredFilePath)
 	if err != nil {
@@ -200,10 +248,20 @@ func (vuln *VulnObject) GetFilterVulnerabilities() error {
 	stdout := bytes.Buffer{}
 	stderr := bytes.Buffer{}
 
+	if !DBIsReady {
+		ready := <-mutexDBIsReady
+		if ready {
+			mutexDBIsReady <- true
+		} else {
+			return fmt.Errorf("GetFilterVulnerabilities: DB download failed")
+		}
+	}
+
 	cmd := exec.Command(vuln.vulnCreatorPath, "sbom:"+vuln.sbomObject.GetSbomFilePath(), "-o", "json")
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	mutexVulnProcess.Lock()
 	logger.Print(logger.INFO, false, "start vuln command for filtered vulnerabilities %s\n", vuln.imageID)
 	logger.Print(logger.DEBUG, false, "cmd.Args %s\n", cmd.Args)
 	err := cmd.Run()
@@ -213,6 +271,8 @@ func (vuln *VulnObject) GetFilterVulnerabilities() error {
 		logger.Print(logger.ERROR, false, "%s\n", stderr.String())
 		return err
 	}
+	mutexVulnProcess.Unlock()
+
 	vuln.vulnData = stdout.Bytes()
 	logger.Print(logger.INFO, false, "the filtered vuln getting finished successesfully for image %s\n", vuln.imageID)
 
