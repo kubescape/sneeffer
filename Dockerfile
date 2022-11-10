@@ -1,4 +1,4 @@
-FROM golang:1.18 as builder
+FROM ubuntu:latest as builder
 
 RUN apt update && apt install git curl cmake make libelf-dev -y
 RUN git clone https://github.com/anchore/grype.git /etc/grype_sc
@@ -21,7 +21,7 @@ WORKDIR /etc/sneeffer
 ADD . .
 RUN go build -o kubescape_sneeffer .
 
-FROM falcosecurity/falco-no-driver:0.32.2
+FROM ubuntu:latest
 
 RUN apt update
 RUN apt-get install -y ca-certificates libelf-dev
