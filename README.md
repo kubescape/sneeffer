@@ -123,8 +123,7 @@ spec:
 ```
 
 ### Limitations
-1. Meanwhile, we are supporting only public images 😢
-2. Sneeffer only creates vulnerability results for PODs it saw starting.  
+1. Sneeffer only creates vulnerability results for PODs it saw starting.  
 
 ## Configuration file
 
