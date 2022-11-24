@@ -8,6 +8,12 @@ import (
 	"github.com/kubescape/sneeffer/sneeffer/utils"
 )
 
+var scedulingSyscalls []string
+
+func init() {
+	scedulingSyscalls = append(scedulingSyscalls, []string{"nice", "sched_setscheduler", "sched_getscheduler", "sched_setparam", "sched_getparam", "sched_get_priority_max", "sched_get_priority_min", "sched_rr_get_interval", "sched_setaffinity", "sched_getaffinity", "sched_yield"}...)
+}
+
 type Aggregator struct {
 	containerID         string
 	stopAggregate       bool
@@ -74,10 +80,25 @@ func parseFileName(snifferData accumulator.MetadataAccumulator) string {
 		} else if strings.HasPrefix(snifferData.SyscallType, "TYPE=open(") {
 			fileName = utils.Between(snifferData.SyscallType, "name: ", ", flags")
 		}
-	default:
-		logger.Print(logger.ERROR, false, "parseFileName: unknown SyscallCategory\n")
 	}
 	return fileName
+}
+
+func parseSyscallName(snifferData accumulator.MetadataAccumulator) string {
+	syscallName := utils.Between(snifferData.SyscallType, "TYPE=", "(")
+	if strings.Contains(syscallName, "UNKNOWN 0") {
+		if strings.Contains(snifferData.SyscallType, "(ID: ") {
+			return utils.Between(snifferData.SyscallType, "(ID: ", ",")
+		}
+	} else if strings.Contains(syscallName, "UNKNOWN 1") {
+		if strings.Contains(snifferData.SyscallType, "(ID: ") {
+			return utils.Between(snifferData.SyscallType, "(ID: ", ")]")
+		}
+	}
+	if snifferData.SyscallCategory == "CAT=SCHEDULER" {
+		return ""
+	}
+	return syscallName
 }
 
 func (aggregator *Aggregator) GetContainerRealtimeFileList() []string {
@@ -94,4 +115,36 @@ func (aggregator *Aggregator) GetContainerRealtimeFileList() []string {
 	logger.Print(logger.DEBUG, false, "GetContainerRealtimeFileList: list size %d\n", len(snifferRealtimeFileList))
 	logger.Print(logger.DEBUG, false, "GetContainerRealtimeFileList: list %v\n", snifferRealtimeFileList)
 	return snifferRealtimeFileList
+}
+
+func addSchedulingSyscalls(snifferRealtimeSyscallList []string) []string {
+	snifferRealtimeSyscallList = append(snifferRealtimeSyscallList, scedulingSyscalls...)
+	return snifferRealtimeSyscallList
+}
+
+func contains(needle string, haystack []string) bool {
+	for i := range haystack {
+		if haystack[i] == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func (aggregator *Aggregator) GetContainerRealtimeSyscalls() []string {
+	var snifferRealtimeSyscallList []string
+
+	logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: aggregator.aggregationData list size %d\n", len(aggregator.aggregationData))
+	logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: aggregator.aggregationData list %v\n", aggregator.aggregationData)
+	for i := range aggregator.aggregationData {
+		syscallName := parseSyscallName(aggregator.aggregationData[i])
+		if syscallName != "" && !contains(syscallName, snifferRealtimeSyscallList) {
+			snifferRealtimeSyscallList = append(snifferRealtimeSyscallList, syscallName)
+		}
+	}
+	snifferRealtimeSyscallList = addSchedulingSyscalls(snifferRealtimeSyscallList)
+
+	logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: list size %d\n", len(snifferRealtimeSyscallList))
+	logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: list %v\n", snifferRealtimeSyscallList)
+	return snifferRealtimeSyscallList
 }

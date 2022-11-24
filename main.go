@@ -24,10 +24,18 @@ func waitOnCacheAccumulatorProccessErrorCode(cacheAccumulatorErrorChan chan erro
 
 func startingOperations() error {
 	err := vuln.DownloadVulnDB()
-	return err
+	if err != nil {
+		return err
+	}
+	err = DB.CreateCRDs()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func main() {
+
 	err := config.ParseConfiguration()
 	if err != nil {
 		log.Fatalf("error during parsing configuration: %v", err)
@@ -43,14 +51,9 @@ func main() {
 		log.Fatalf("error during DB initialization: %v", err)
 	}
 
-	err = DB.CreateCRDs()
-	if err != nil {
-		log.Fatalf("error during DB initialization: %v", err)
-	}
-
 	cacheAccumulatorErrorChan := make(chan error)
 	cachAccumulator := accumulator.CreateCacheAccumulator(10)
-	err = cachAccumulator.StartCacheAccumalator(cacheAccumulatorErrorChan, []string{"execve", "execveat", "open", "openat"}, false, false)
+	err = cachAccumulator.StartCacheAccumalator(cacheAccumulatorErrorChan, config.GetSyscallFilter(), false, false)
 	if err != nil {
 		log.Fatalf("fail to create cache watcher %v", err)
 	}

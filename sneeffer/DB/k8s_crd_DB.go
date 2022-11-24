@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kubescape/sneeffer/internal/logger"
+	"github.com/kubescape/sneeffer/sneeffer/container_profiling"
 	global_data "github.com/kubescape/sneeffer/sneeffer/global_data/k8s"
 	"github.com/kubescape/sneeffer/sneeffer/utils"
 	"github.com/kubescape/sneeffer/sneeffer/vuln"
@@ -26,6 +27,7 @@ import (
 const (
 	summaryType                    = "summary"
 	fullDetailedType               = "fullDetailed"
+	containerProfilingType         = "containerProfiling"
 	allowedCharsForK8sResourceName = "abcdefghijklmnopqrstuvwxyz0123456789-."
 )
 
@@ -49,6 +51,12 @@ type RuntimeVulnSummary struct {
 	Spec          vuln.VulnSummary `json:"spec"`
 }
 
+type ContainerProfiling struct {
+	v1.TypeMeta   `json:",inline"`
+	v1.ObjectMeta `json:"metadata,omitempty"`
+	Spec          container_profiling.SeccompData `json:"spec"`
+}
+
 var client *DBClient
 var restConfig *rest.Config
 
@@ -61,6 +69,11 @@ var groupNameSummaryCR string
 var pluralNameSummaryCR string
 var groupVersionSummaryCR string
 var kindSummaryCR string
+
+var groupNameContainerProfilingCR string
+var groupVersionContainerProfilingCR string
+var kindContainerProfilingCR string
+var pluralNameContainerProfilingCR string
 
 func (in *RuntimeVulnSummary) DeepCopyInto(out *RuntimeVulnSummary) {
 	out.TypeMeta = in.TypeMeta
@@ -83,6 +96,19 @@ func (in *RuntimeVulnDetailed) DeepCopyInto(out *RuntimeVulnDetailed) {
 
 func (in *RuntimeVulnDetailed) DeepCopyObject() runtime.Object {
 	out := RuntimeVulnDetailed{}
+	in.DeepCopyInto(&out)
+
+	return &out
+}
+
+func (in *ContainerProfiling) DeepCopyInto(out *ContainerProfiling) {
+	out.TypeMeta = in.TypeMeta
+	out.ObjectMeta = in.ObjectMeta
+	out.Spec = in.Spec
+}
+
+func (in *ContainerProfiling) DeepCopyObject() runtime.Object {
+	out := ContainerProfiling{}
 	in.DeepCopyInto(&out)
 
 	return &out
@@ -142,6 +168,14 @@ func CreateCRDs() error {
 		return err
 	}
 
+	val, exist := os.LookupEnv("enableProfiling")
+	if exist && (val == "true" || val == "True") {
+		groupNameContainerProfilingCR = "security-profiles-operator.x-k8s.io"
+		groupVersionContainerProfilingCR = "v1beta1"
+		kindContainerProfilingCR = "SeccompProfile"
+		pluralNameContainerProfilingCR = "seccompprofiles"
+	}
+
 	return nil
 }
 
@@ -181,31 +215,39 @@ func connectToDB() error {
 }
 
 func getGroupName(CRType string) string {
-	if CRType == "summary" {
+	if CRType == summaryType {
 		return groupNameSummaryCR
+	} else if CRType == fullDetailedType {
+		return groupNameFullCRDetailes
 	}
-	return groupNameFullCRDetailes
+	return groupNameContainerProfilingCR
 }
 
 func getGroupVersion(CRType string) string {
-	if CRType == "summary" {
+	if CRType == summaryType {
 		return groupVersionSummaryCR
+	} else if CRType == fullDetailedType {
+		return groupVersionFullCRDetailes
 	}
-	return groupVersionFullCRDetailes
+	return groupVersionContainerProfilingCR
 }
 
 func getGroupKind(CRType string) string {
-	if CRType == "summary" {
+	if CRType == summaryType {
 		return kindSummaryCR
+	} else if CRType == fullDetailedType {
+		return kindFullCRDetailes
 	}
-	return kindFullCRDetailes
+	return kindContainerProfilingCR
 }
 
 func getPluralName(CRType string) string {
-	if CRType == "summary" {
+	if CRType == summaryType {
 		return pluralNameSummaryCR
+	} else if CRType == fullDetailedType {
+		return pluralNameFullCRDetailes
 	}
-	return pluralNameFullCRDetailes
+	return pluralNameContainerProfilingCR
 }
 
 func newCRClient(CRType string) (*CRClient, error) {
@@ -222,7 +264,7 @@ func newCRClient(CRType string) (*CRClient, error) {
 	return &CRClient{restClient: client}, nil
 }
 
-func SetDataInDB(vulnData *vuln.ProccesedVulnData, resourceName string) error {
+func SetDataInDB(vulnData *vuln.ProccesedVulnData, containerProfilingData *container_profiling.SeccompData, resourceName string) error {
 	err := connectToDB()
 	if err != nil {
 		return err
@@ -311,7 +353,7 @@ func SetDataInDB(vulnData *vuln.ProccesedVulnData, resourceName string) error {
 					vulnFullDetailed.ObjectMeta.ResourceVersion = vulnFullDetailedResult.GetObjectMeta().GetResourceVersion()
 					err = CRFullDetailedClient.restClient.Put().Resource(getPluralName(fullDetailedType)).Name(vulnFullDetailed.GetName()).Body(vulnFullDetailed).Do(global_data.GlobalHTTPContext).Into(&vulnFullDetailedResult)
 					if err != nil {
-						logger.Print(logger.ERROR, false, "fail to resource resource %s with err %v\n", resourceName, err)
+						logger.Print(logger.ERROR, false, "fail to update resource %s with err %v\n", resourceName, err)
 					}
 				} else {
 					logger.Print(logger.INFO, false, "the vuln data of resource %s not changed, no update is needed\n", resourceName)
@@ -323,6 +365,53 @@ func SetDataInDB(vulnData *vuln.ProccesedVulnData, resourceName string) error {
 	}
 
 	logger.Print(logger.INFO, false, "please run the following command to see the result in full detaileds: kubectl get %s.%s %s -o yaml\n", getPluralName(fullDetailedType), getGroupName(fullDetailedType), resourceName)
+
+	val, exist := os.LookupEnv("enableProfiling")
+	if exist && (val == "true" || val == "True") {
+
+		CRContainerProfiling, err := newCRClient(containerProfilingType)
+		if err != nil {
+			return err
+		}
+
+		containerProfilingResult := ContainerProfiling{}
+		containerProfiling := &ContainerProfiling{
+			TypeMeta: v1.TypeMeta{
+				APIVersion: getGroupName(containerProfilingType) + "/" + getGroupVersion(containerProfilingType),
+				Kind:       getGroupKind(containerProfilingType),
+			},
+			ObjectMeta: v1.ObjectMeta{
+				Name: resourceName,
+			},
+			Spec: *containerProfilingData,
+		}
+
+		err = CRContainerProfiling.restClient.Post().Resource(getPluralName(containerProfilingType)).Namespace("security-profiles-operator").Body(containerProfiling).Do(global_data.GlobalHTTPContext).Into(&containerProfilingResult)
+		if err != nil {
+			if strings.Contains(err.Error(), "already exists") {
+				logger.Print(logger.INFO, false, "%s already exists, check if need to update vulns\n", resourceName)
+				err = CRContainerProfiling.restClient.Get().Resource(getPluralName(containerProfilingType)).Namespace("security-profiles-operator").Name(resourceName).Do(global_data.GlobalHTTPContext).Into(&containerProfilingResult)
+				if err != nil {
+					logger.Print(logger.WARNING, false, "fail to get resource %s for check if update needed with err %v\n", resourceName, err)
+				} else {
+					if equal := reflect.DeepEqual(containerProfilingResult.Spec, containerProfilingResult.Spec); !equal {
+						logger.Print(logger.INFO, false, "the vuln data of resource %s has changed, updating\n", resourceName)
+						vulnFullDetailed.ObjectMeta.ResourceVersion = containerProfilingResult.GetObjectMeta().GetResourceVersion()
+						err = CRContainerProfiling.restClient.Put().Resource(getPluralName(containerProfilingType)).Namespace("security-profiles-operator").Name(containerProfiling.GetName()).Body(containerProfiling).Do(global_data.GlobalHTTPContext).Into(&containerProfilingResult)
+						if err != nil {
+							logger.Print(logger.ERROR, false, "fail to update resource %s with err %v\n", resourceName, err)
+						}
+					} else {
+						logger.Print(logger.INFO, false, "the vuln data of resource %s not changed, no update is needed\n", resourceName)
+					}
+				}
+			} else {
+				return err
+			}
+		}
+		logger.Print(logger.INFO, false, "please run the following command to see the result in full detaileds: kubectl -n security-profiles-operator get %s.%s %s -o yaml\n", getPluralName(containerProfilingType), getGroupName(containerProfilingType), resourceName)
+
+	}
 
 	return nil
 }

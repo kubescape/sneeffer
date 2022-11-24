@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types"
+	"github.com/kubescape/sneeffer/internal/config"
 	"github.com/kubescape/sneeffer/internal/logger"
 	"github.com/kubescape/sneeffer/sneeffer/DB"
 	"github.com/kubescape/sneeffer/sneeffer/aggregator"
+	"github.com/kubescape/sneeffer/sneeffer/container_profiling"
 	global_data "github.com/kubescape/sneeffer/sneeffer/global_data/k8s"
 	"github.com/kubescape/sneeffer/sneeffer/sbom"
 	"github.com/kubescape/sneeffer/sneeffer/vuln"
@@ -128,6 +130,7 @@ func getK8SResourceName(containerData *watchedContainer) string {
 func (containerWatcher *ContainerWatcher) afterTimerActions(containerID string, resourceName string) error {
 	var err error
 	containerData := containerWatcher.watchedContainers[containerID]
+	var syscallList []string
 
 	logger.Print(logger.INFO, false, "stop sniffing on containerID %s in k8s resource %s\n", getShortContainerID(containerID), resourceName)
 	containerData.containerAggregator.StopAggregate()
@@ -149,7 +152,12 @@ func (containerWatcher *ContainerWatcher) afterTimerActions(containerID string, 
 		return err
 	}
 
-	err = DB.SetDataInDB(containerData.vulnObject.GetProcessedData(), resourceName)
+	val, exist := os.LookupEnv("enableProfiling")
+	if exist && (val == "true" || val == "True") {
+		syscallList = containerData.containerAggregator.GetContainerRealtimeSyscalls()
+	}
+
+	err = DB.SetDataInDB(containerData.vulnObject.GetProcessedData(), container_profiling.CreateSeccompProfile(syscallList), resourceName)
 	if err != nil {
 		return err
 	}
@@ -194,7 +202,7 @@ func (containerWatcher *ContainerWatcher) StartFindRelaventCVEsInRuntime(contain
 	go containerData.vulnObject.GetImageVulnerabilities(containerData.syncChannel[STEP_GET_UNFILTER_VULNS])
 
 	/*phase 3: create sniffer to image */
-	containerData.containerAggregator.StartAggregate(containerData.syncChannel[STEP_GET_SNIFFER_DATA], resourceName, []string{"execve", "execveat", "open", "openat"}, false, false)
+	containerData.containerAggregator.StartAggregate(containerData.syncChannel[STEP_GET_SNIFFER_DATA], resourceName, config.GetSyscallFilter(), false, false)
 
 	/*phase 4: start timer for sniffing*/
 	go containerWatcher.startTimer(containerID, resourceName)

@@ -10,6 +10,9 @@ import (
 	"github.com/kubescape/sneeffer/internal/logger"
 )
 
+var sycscallFilterForRelaventCVES []string
+var sycscallFilterForContainerProfiling []string
+
 var manadatoryConfigurationVars []string
 var innerDirectoriesPath []string
 
@@ -24,6 +27,7 @@ func init() {
 	manadatoryConfigurationVars = append(manadatoryConfigurationVars, "myNode")
 	innerDirectoriesPath = append(innerDirectoriesPath, "/sbom")
 	innerDirectoriesPath = append(innerDirectoriesPath, "/vuln")
+	sycscallFilterForRelaventCVES = append(sycscallFilterForRelaventCVES, []string{"execve", "execveat", "open", "openat"}...)
 }
 
 func parseConfigurationFile(configurationFilePath string) error {
@@ -116,4 +120,15 @@ func ParseConfiguration() error {
 	}
 
 	return nil
+}
+
+func GetSyscallFilter() []string {
+	val, exist := os.LookupEnv("enableProfiling")
+	if !exist {
+		return sycscallFilterForRelaventCVES
+	}
+	if val == "true" || val == "True" {
+		return sycscallFilterForContainerProfiling
+	}
+	return sycscallFilterForRelaventCVES
 }

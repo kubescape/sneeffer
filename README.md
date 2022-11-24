@@ -141,6 +141,7 @@ spec:
 |`crdFullDetailedPath`| CRD yaml file path of the detailed runtime CVE data|
 |`crdVulnSummaryPath` | CRD yaml file path of the summary runtime CVE data|
 |`myNode`           | Name of the node that would be monitored|
+|`enableProfiling`           | monitor used syscalls and capabilities in runnning pods - false by default - not mandatory|
 
 
 ### Example
