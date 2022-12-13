@@ -11,6 +11,9 @@ metadata:
   namespace: default
 rules:
 - apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["get"]
+- apiGroups: ["*"]
   resources: ["pods"]
   verbs: ["watch"]
 - apiGroups: ["apiextensions.k8s.io"]
