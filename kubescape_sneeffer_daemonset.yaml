@@ -11,7 +11,7 @@ metadata:
   namespace: default
 rules:
 - apiGroups: ["*"]
-  resources: ["*"]
+  resources: ["pods", "nodes", "deployments", "daemonsets", "statefulsets", "jobs", "cronjobs", "replicasets"]
   verbs: ["get"]
 - apiGroups: ["*"]
   resources: ["pods"]
