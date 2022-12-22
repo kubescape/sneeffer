@@ -16,6 +16,9 @@ var sycscallFilterForContainerProfiling []string
 var manadatoryConfigurationVars []string
 var innerDirectoriesPath []string
 
+var relaventCVEService bool
+var containerProfilingService bool
+
 func init() {
 	manadatoryConfigurationVars = append(manadatoryConfigurationVars, "kernelObjPath")
 	manadatoryConfigurationVars = append(manadatoryConfigurationVars, "snifferEngineLoaderPath")
@@ -28,6 +31,8 @@ func init() {
 	innerDirectoriesPath = append(innerDirectoriesPath, "/sbom")
 	innerDirectoriesPath = append(innerDirectoriesPath, "/vuln")
 	sycscallFilterForRelaventCVES = append(sycscallFilterForRelaventCVES, []string{"execve", "execveat", "open", "openat"}...)
+	containerProfilingService = false
+	relaventCVEService = false
 }
 
 func parseConfigurationFile(configurationFilePath string) error {
@@ -89,13 +94,38 @@ func loggerConfig() {
 	logger.ConfigLogger(verbose, "")
 }
 
+func servicesConfig() error {
+	serviceExist := false
+
+	val, exist := os.LookupEnv("enableRelaventCVEsService")
+	if exist {
+		if val == "true" || val == "True" {
+			relaventCVEService = true
+			serviceExist = true
+			logger.Print(logger.INFO, false, "sneeffer service find relavent CVEs is enabled\n")
+		}
+	}
+	val, exist = os.LookupEnv("enableContainerProfilingService")
+	if exist {
+		if val == "true" || val == "True" {
+			containerProfilingService = true
+			serviceExist = true
+			logger.Print(logger.INFO, false, "sneeffer service container profiling is enabled\n")
+		}
+	}
+	if !serviceExist {
+		return fmt.Errorf("no service is configured to use, please look in the configuration file that one of the services mark as true or True")
+	}
+	return nil
+}
+
 func afterConfigurationParserActions() error {
 	err := createInnerDirectories()
 	if err != nil {
 		return err
 	}
 	loggerConfig()
-	return nil
+	return servicesConfig()
 }
 
 func ParseConfiguration() error {
@@ -123,12 +153,16 @@ func ParseConfiguration() error {
 }
 
 func GetSyscallFilter() []string {
-	val, exist := os.LookupEnv("enableProfiling")
-	if !exist {
-		return sycscallFilterForRelaventCVES
-	}
-	if val == "true" || val == "True" {
+	if IsContainerProfilingServiceEnabled() {
 		return sycscallFilterForContainerProfiling
 	}
 	return sycscallFilterForRelaventCVES
+}
+
+func IsRelaventCVEServiceEnabled() bool {
+	return relaventCVEService
+}
+
+func IsContainerProfilingServiceEnabled() bool {
+	return containerProfilingService
 }

@@ -4,10 +4,10 @@ go 1.18
 
 require (
 	github.com/anchore/syft v0.57.0
-	k8s.io/api v0.25.2
+	k8s.io/api v0.25.3
 	k8s.io/apiextensions-apiserver v0.25.2
-	k8s.io/apimachinery v0.25.2
-	k8s.io/client-go v0.25.2
+	k8s.io/apimachinery v0.25.3
+	k8s.io/client-go v0.25.3
 )
 
 require github.com/google/go-cmp v0.5.9 // indirect
@@ -15,7 +15,7 @@ require github.com/google/go-cmp v0.5.9 // indirect
 require (
 	github.com/anchore/grype v0.50.2
 	github.com/docker/docker v20.10.17+incompatible
-	github.com/kubescape/k8s-interface v0.0.85
+	github.com/kubescape/k8s-interface v0.0.89
 	github.com/sirupsen/logrus v1.9.0
 	github.com/xyproto/randomstring v0.0.0-20220311122621-4964ec363205
 	gopkg.in/yaml.v2 v2.4.0

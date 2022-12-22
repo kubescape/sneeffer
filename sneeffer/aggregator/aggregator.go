@@ -1,6 +1,8 @@
 package aggregator
 
 import (
+	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/kubescape/sneeffer/internal/logger"
@@ -8,10 +10,21 @@ import (
 	"github.com/kubescape/sneeffer/sneeffer/utils"
 )
 
-var scedulingSyscalls []string
+var unknownSyscall []string
+var duplicateSyscall map[string]string
 
 func init() {
-	scedulingSyscalls = append(scedulingSyscalls, []string{"nice", "sched_setscheduler", "sched_getscheduler", "sched_setparam", "sched_getparam", "sched_get_priority_max", "sched_get_priority_min", "sched_rr_get_interval", "sched_setaffinity", "sched_getaffinity", "sched_yield"}...)
+	unknownSyscall = append(unknownSyscall, []string{"putpmsg", "afs_syscall", "tuxcall", "security", "vserver", "ppoll"}...)
+	duplicateSyscall = make(map[string]string)
+	duplicateSyscall["pread"] = "pread64"
+	duplicateSyscall["pwrite"] = "pwrite64"
+	duplicateSyscall["umount"] = "umount2"
+	duplicateSyscall["accept"] = "accept4"
+	duplicateSyscall["signalfd"] = "signalfd4"
+	duplicateSyscall["eventfd"] = "eventfd2"
+	duplicateSyscall["pipe"] = "pipe2"
+	duplicateSyscall["inotify_init"] = "inotify_init1"
+	duplicateSyscall["prlimit"] = "prlimit64"
 }
 
 type Aggregator struct {
@@ -23,7 +36,6 @@ type Aggregator struct {
 	containerAccumuator *accumulator.ContainerAccumulator
 	cacheAccumuator     *accumulator.CacheAccumulator
 	containerStartTime  interface{}
-	errChan             chan error
 }
 
 func CreateAggregator(containerID string, containerStartTime interface{}) *Aggregator {
@@ -39,29 +51,32 @@ func CreateAggregator(containerID string, containerStartTime interface{}) *Aggre
 	}
 }
 
-func (aggregator *Aggregator) collectDataFromContainerAccumulator() {
+func (aggregator *Aggregator) collectDataFromContainerAccumulator(errChan chan error) {
 	for {
 		newData := <-aggregator.aggregationDataChan
+		if newData.Cmd == "drop event occured\n" {
+			aggregator.StopAggregate()
+			errChan <- fmt.Errorf(newData.Cmd)
+			break
+		}
 		aggregator.aggregationData = append(aggregator.aggregationData, newData)
 	}
 }
 
 func (aggregator *Aggregator) aggregateFromCacheAccumulator() {
 	aggregator.cacheAccumuator.AccumulatorByContainerID(&aggregator.aggregationData, aggregator.containerID, aggregator.containerStartTime)
-	// logger.Print(logger.DEBUG, false, "aggregator.aggregationData for containerID %s:\n%v\n", aggregator.containerID, aggregator.aggregationData)
 }
 
-func (aggregator *Aggregator) StartAggregate(errChan chan error, resourceName string, syscallFilter []string, includeHost bool, sniffMainThreadOnly bool) error {
-	aggregator.errChan = errChan
+func (aggregator *Aggregator) StartAggregate(errChan chan error) error {
 	aggregator.containerAccumuator = accumulator.CreateContainerAccumulator(aggregator.containerID, aggregator.aggregationDataChan)
-	go aggregator.containerAccumuator.StartContainerAccumalator(errChan, resourceName, syscallFilter, includeHost, sniffMainThreadOnly)
-	go aggregator.collectDataFromContainerAccumulator()
+	go aggregator.containerAccumuator.StartContainerAccumalator()
+	go aggregator.collectDataFromContainerAccumulator(errChan)
 	aggregator.aggregateFromCacheAccumulator()
 	return nil
 }
 
 func (aggregator *Aggregator) StopAggregate() error {
-	aggregator.containerAccumuator.StopWatching(aggregator.errChan)
+	aggregator.containerAccumuator.StopWatching()
 	return nil
 }
 
@@ -85,17 +100,11 @@ func parseFileName(snifferData accumulator.MetadataAccumulator) string {
 }
 
 func parseSyscallName(snifferData accumulator.MetadataAccumulator) string {
-	syscallName := utils.Between(snifferData.SyscallType, "TYPE=", "(")
-	if strings.Contains(syscallName, "UNKNOWN 0") {
-		if strings.Contains(snifferData.SyscallType, "(ID: ") {
-			return utils.Between(snifferData.SyscallType, "(ID: ", ",")
-		}
-	} else if strings.Contains(syscallName, "UNKNOWN 1") {
-		if strings.Contains(snifferData.SyscallType, "(ID: ") {
-			return utils.Between(snifferData.SyscallType, "(ID: ", ")]")
-		}
-	}
 	if snifferData.SyscallCategory == "CAT=SCHEDULER" {
+		return ""
+	}
+	syscallName := utils.Between(snifferData.SyscallType, "TYPE=", "(")
+	if syscallName == "unknown" {
 		return ""
 	}
 	return syscallName
@@ -104,7 +113,11 @@ func parseSyscallName(snifferData accumulator.MetadataAccumulator) string {
 func (aggregator *Aggregator) GetContainerRealtimeFileList() []string {
 	var snifferRealtimeFileList []string
 
-	logger.Print(logger.DEBUG, false, "GetContainerRealtimeFileList: aggregator.aggregationData %d\n", len(aggregator.aggregationData))
+	logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: aggregator.aggregationData list size %d\n", len(aggregator.aggregationData))
+	logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: aggregator.aggregationData list %v\n", aggregator.aggregationData)
+	if len(aggregator.aggregationData) > 0 {
+		logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: aggregator.aggregationData event time range %v\n", aggregator.aggregationData[len(aggregator.aggregationData)-1].Timestamp.Sub(aggregator.aggregationData[0].Timestamp).Seconds())
+	}
 	for i := range aggregator.aggregationData {
 		fileName := parseFileName(aggregator.aggregationData[i])
 		if fileName != "" {
@@ -117,8 +130,8 @@ func (aggregator *Aggregator) GetContainerRealtimeFileList() []string {
 	return snifferRealtimeFileList
 }
 
-func addSchedulingSyscalls(snifferRealtimeSyscallList []string) []string {
-	snifferRealtimeSyscallList = append(snifferRealtimeSyscallList, scedulingSyscalls...)
+func addUnknownSyscalls(snifferRealtimeSyscallList []string) []string {
+	snifferRealtimeSyscallList = append(snifferRealtimeSyscallList, unknownSyscall...)
 	return snifferRealtimeSyscallList
 }
 
@@ -136,15 +149,24 @@ func (aggregator *Aggregator) GetContainerRealtimeSyscalls() []string {
 
 	logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: aggregator.aggregationData list size %d\n", len(aggregator.aggregationData))
 	logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: aggregator.aggregationData list %v\n", aggregator.aggregationData)
+	if len(aggregator.aggregationData) > 0 {
+		logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: aggregator.aggregationData event time range %v\n", aggregator.aggregationData[len(aggregator.aggregationData)-1].Timestamp.Sub(aggregator.aggregationData[0].Timestamp).Seconds())
+	}
 	for i := range aggregator.aggregationData {
 		syscallName := parseSyscallName(aggregator.aggregationData[i])
 		if syscallName != "" && !contains(syscallName, snifferRealtimeSyscallList) {
 			snifferRealtimeSyscallList = append(snifferRealtimeSyscallList, syscallName)
+			if dupSys, ok := duplicateSyscall[syscallName]; ok {
+				if !contains(dupSys, snifferRealtimeSyscallList) {
+					snifferRealtimeSyscallList = append(snifferRealtimeSyscallList, dupSys)
+				}
+			}
 		}
 	}
-	snifferRealtimeSyscallList = addSchedulingSyscalls(snifferRealtimeSyscallList)
+	snifferRealtimeSyscallList = addUnknownSyscalls(snifferRealtimeSyscallList)
 
-	logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: list size %d\n", len(snifferRealtimeSyscallList))
-	logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: list %v\n", snifferRealtimeSyscallList)
+	sort.Strings(snifferRealtimeSyscallList)
+	logger.Print(logger.INFO, false, "GetContainerRealtimeSyscalls: list size %d\n", len(snifferRealtimeSyscallList))
+	logger.Print(logger.INFO, false, "GetContainerRealtimeSyscalls: list %v\n", snifferRealtimeSyscallList)
 	return snifferRealtimeSyscallList
 }

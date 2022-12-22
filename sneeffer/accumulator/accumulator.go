@@ -3,21 +3,14 @@ package accumulator
 import (
 	"bufio"
 	"io"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kubescape/sneeffer/internal/logger"
 	"github.com/kubescape/sneeffer/internal/sniffer_engine"
-
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
-
-const (
-	CACHE_TYPE     = 0
-	CONTAINER_TYPE = 1
 )
 
 type AccumulatorInterface interface {
@@ -35,17 +28,23 @@ type MetadataAccumulator struct {
 	Cmd             string
 }
 
+type containersAccumalator struct {
+	accumultorDataPerContainer map[string]chan MetadataAccumulator
+	registerContainerState     bool
+	unregisterContainerState   bool
+	registerMutex              sync.Mutex
+}
+
 type CacheAccumulator struct {
 	accumultorData               []map[string][]MetadataAccumulator
 	firstMapKeysOfAccumultorData []string
 	CacheAccumulatorSize         int
+	containersData               containersAccumalator
 }
 
 type ContainerAccumulator struct {
-	dataChannel  chan MetadataAccumulator
-	containerID  string
-	watcherPID   int
-	stopWatching bool
+	dataChannel chan MetadataAccumulator
+	containerID string
 }
 
 var cacheAccumuator *CacheAccumulator
@@ -55,6 +54,11 @@ func CreateCacheAccumulator(CacheAccumulatorSize int) *CacheAccumulator {
 		CacheAccumulatorSize:         CacheAccumulatorSize,
 		accumultorData:               make([]map[string][]MetadataAccumulator, CacheAccumulatorSize),
 		firstMapKeysOfAccumultorData: make([]string, CacheAccumulatorSize),
+		containersData: containersAccumalator{
+			accumultorDataPerContainer: make(map[string]chan MetadataAccumulator),
+			registerContainerState:     false,
+			unregisterContainerState:   false,
+		},
 	}
 
 	return cacheAccumuator
@@ -62,9 +66,8 @@ func CreateCacheAccumulator(CacheAccumulatorSize int) *CacheAccumulator {
 
 func CreateContainerAccumulator(containerID string, dataChannel chan MetadataAccumulator) *ContainerAccumulator {
 	return &ContainerAccumulator{
-		dataChannel:  dataChannel,
-		containerID:  containerID,
-		stopWatching: false,
+		dataChannel: dataChannel,
+		containerID: containerID,
 	}
 }
 
@@ -119,6 +122,11 @@ func convertStrigTimeToTimeOBJ(Timestamp string) (*time.Time, error) {
 }
 
 func parseLine(line string) *MetadataAccumulator {
+	if strings.Contains(line, "drop event occured") {
+		return &MetadataAccumulator{
+			Cmd: "drop event occured\n",
+		}
+	}
 	lineParts := strings.Split(line, "]::[")
 	if len(lineParts) != 8 {
 		logger.Print(logger.ERROR, false, "parseLine Timestamp fail line is %s\n\n", line)
@@ -183,39 +191,45 @@ func (acc *CacheAccumulator) findIndexByTimestamp(t time.Time) (int, bool) {
 func (acc *CacheAccumulator) accmulateOneLine(line string) {
 	metadataAcc := parseLine(line)
 	if metadataAcc != nil {
-		index, createNewMap := acc.findIndexByTimestamp(metadataAcc.Timestamp)
-		if index == -1 {
-			// logger.Print(logger.DEBUG, false, "metadataAcc %v\n", metadataAcc)
-			return
-		}
-		if createNewMap {
-			slice := make([]MetadataAccumulator, 0)
-			m := make(map[string][]MetadataAccumulator)
-			m[metadataAcc.ContainerID] = slice
-			acc.accumultorData[index] = m
-			acc.firstMapKeysOfAccumultorData[index] = metadataAcc.ContainerID
-		}
-		a := acc.accumultorData[index]
-		a[metadataAcc.ContainerID] = append(a[metadataAcc.ContainerID], *metadataAcc)
-		acc.accumultorData[index][metadataAcc.ContainerID] = append(acc.accumultorData[index][metadataAcc.ContainerID], *metadataAcc)
-	}
-}
+		if metadataAcc.Cmd == "drop event occured\n" {
+			if acc.containersData.unregisterContainerState || acc.containersData.registerContainerState {
+				acc.containersData.registerMutex.Lock()
+			}
+			if len(acc.containersData.accumultorDataPerContainer) > 0 {
+				for contID := range acc.containersData.accumultorDataPerContainer {
+					acc.containersData.accumultorDataPerContainer[contID] <- *metadataAcc
+				}
+			}
+			if acc.containersData.unregisterContainerState || acc.containersData.registerContainerState {
+				acc.containersData.registerMutex.Unlock()
+			}
+		} else {
+			index, createNewMap := acc.findIndexByTimestamp(metadataAcc.Timestamp)
+			if index == -1 {
+				// logger.Print(logger.DEBUG, false, "metadataAcc %v\n", metadataAcc)
+				return
+			}
+			if createNewMap {
+				slice := make([]MetadataAccumulator, 0)
+				m := make(map[string][]MetadataAccumulator)
+				m[metadataAcc.ContainerID] = slice
+				acc.accumultorData[index] = m
+				acc.firstMapKeysOfAccumultorData[index] = metadataAcc.ContainerID
+			}
+			a := acc.accumultorData[index]
+			a[metadataAcc.ContainerID] = append(a[metadataAcc.ContainerID], *metadataAcc)
+			acc.accumultorData[index][metadataAcc.ContainerID] = append(acc.accumultorData[index][metadataAcc.ContainerID], *metadataAcc)
 
-func (acc *ContainerAccumulator) accmulateOneLine(line string) {
-	metadataAcc := parseLine(line)
-	if metadataAcc != nil {
-		acc.dataChannel <- *metadataAcc
-	}
-}
-
-func (acc *ContainerAccumulator) accumulateSnifferData(stdout io.ReadCloser) {
-	for !acc.stopWatching {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			line := scanner.Text()
-			acc.accmulateOneLine(line)
+			if acc.containersData.unregisterContainerState || acc.containersData.registerContainerState {
+				acc.containersData.registerMutex.Lock()
+			}
+			if containerAccumalatorChan, exist := acc.containersData.accumultorDataPerContainer[metadataAcc.ContainerID]; exist {
+				containerAccumalatorChan <- *metadataAcc
+			}
+			if acc.containersData.unregisterContainerState || acc.containersData.registerContainerState {
+				acc.containersData.registerMutex.Unlock()
+			}
 		}
-		logger.Print(logger.DEBUG, false, "ContainerAccumulator accumulateSnifferData scanner.Err(): %v\n", scanner.Err())
 	}
 }
 
@@ -224,11 +238,12 @@ func (acc *CacheAccumulator) accumulateSnifferData(stdout io.ReadCloser) {
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
 			fullLine := scanner.Text()
-			// logger.Print(logger.DEBUG, false, "fullLine %s\n", fullLine)
-			acc.accmulateOneLine(fullLine)
+			// logger.Print(logger.INFO, false, "line %s\n", fullLine)
+			if fullLine != "" {
+				acc.accmulateOneLine(fullLine)
+			}
 		}
 		logger.Print(logger.DEBUG, false, "CacheAccumulator accumulateSnifferData scanner.Err(): %v\n", scanner.Err())
-		// if scanner.Err()
 	}
 }
 
@@ -248,41 +263,32 @@ func (acc *CacheAccumulator) StartCacheAccumalator(errChan chan error, syscallFi
 	return nil
 }
 
-func (acc *ContainerAccumulator) StartContainerAccumalator(errChan chan error, resourceName string, syscallFilter []string, includeHost bool, sniffMainThreadOnly bool) error {
-	sniffer := sniffer_engine.CreateSnifferEngine(syscallFilter, includeHost, sniffMainThreadOnly, acc.containerID)
-	logger.Print(logger.INFO, false, "starting runtime sniffer for container %s in k8s resource %s\n", acc.containerID, resourceName)
-	stdout, pid, err, cmd := sniffer.StartSnifferEngine()
-	if err != nil {
-		logger.Print(logger.ERROR, false, "fail to create sniffer agent process\n")
-		errChan <- err
-		return err
-	}
-	acc.watcherPID = pid
-	go acc.accumulateSnifferData(stdout)
-	go waitToProcessErrCode(cmd, errChan)
-	return nil
+func (acc *ContainerAccumulator) registerContainerAccumalator() {
+	cacheAccumuator.containersData.registerContainerState = true
+	cacheAccumuator.containersData.registerMutex.Lock()
+	cacheAccumuator.containersData.accumultorDataPerContainer[acc.containerID] = acc.dataChannel
+	cacheAccumuator.containersData.registerMutex.Unlock()
+	cacheAccumuator.containersData.registerContainerState = false
 }
 
-func (acc *ContainerAccumulator) StopWatching(errChan chan error) {
-	acc.stopWatching = true
-	proc, err := os.FindProcess(acc.watcherPID)
-	if err != nil {
-		errFromChannel := <-errChan
-		logger.Print(logger.ERROR, false, "failed to stop watcher pid %d, the sniffer process for containerID %s failed with error: %v\n", acc.watcherPID, acc.containerID, errFromChannel)
-	} else {
-		err = proc.Signal(os.Kill)
-		if err != nil {
-			logger.Print(logger.ERROR, false, "failed to stop watcher pid %d\n", acc.watcherPID)
-		}
-	}
+func (acc *ContainerAccumulator) unregisterContainerAccumalator() {
+	cacheAccumuator.containersData.unregisterContainerState = true
+	cacheAccumuator.containersData.registerMutex.Lock()
+	delete(cacheAccumuator.containersData.accumultorDataPerContainer, acc.containerID)
+	cacheAccumuator.containersData.registerMutex.Unlock()
+	cacheAccumuator.containersData.unregisterContainerState = false
+}
+
+func (acc *ContainerAccumulator) StartContainerAccumalator() {
+	acc.registerContainerAccumalator()
+}
+
+func (acc *ContainerAccumulator) StopWatching() {
+	acc.unregisterContainerAccumalator()
 }
 
 func GetCacheAccumaltor() *CacheAccumulator {
 	return cacheAccumuator
-}
-
-func IsBeforeContainerStartTime(containerStartTime v1.Time, timestamp v1.Time) bool {
-	return timestamp.UTC().Before(timestamp.Time.UTC())
 }
 
 func (acc *CacheAccumulator) AccumulatorByContainerID(aggregationData *[]MetadataAccumulator, containerID string, containerStartTime interface{}) {
@@ -291,15 +297,6 @@ func (acc *CacheAccumulator) AccumulatorByContainerID(aggregationData *[]Metadat
 	}
 	for i := range acc.accumultorData {
 		for j := range acc.accumultorData[i][containerID] {
-			// logger.Print(logger.DEBUG, false, "before if: AccumulatorByContainerID acc.accumultorData[i][containerID][j].Timestamp %v\n", acc.accumultorData[i][containerID][j].Timestamp)
-			// logger.Print(logger.DEBUG, false, "before if: AccumulatorByContainerID acc.accumultorData[i][containerID][j].Timestamp %v\n", acc.accumultorData[i][containerID][j].Timestamp)
-			// acc.accumultorData[i][containerID][j].Timestamp.Sub(time.Time(accumultorData[i][containerID][j].Timestamp.Nanosecond()))
-			// t := v1.NewTime(acc.accumultorData[i][containerID][j].Timestamp)
-			// if IsBeforeContainerStartTime(containerStartTime.(v1.Time), t) {
-			// 	logger.Print(logger.DEBUG, false, "append data acc.accumultorData[%d][%s][%d] %v", i, containerID, j, acc.accumultorData[i][containerID][j])
-			// 	logger.Print(logger.DEBUG, false, "AccumulatorByContainerID acc.accumultorData[i][containerID][j].Timestamp %v\n", acc.accumultorData[i][containerID][j].Timestamp)
-			// 	*aggregationData = append(*aggregationData, acc.accumultorData[i][containerID][j])
-			// }
 			*aggregationData = append(*aggregationData, acc.accumultorData[i][containerID][j])
 		}
 	}
