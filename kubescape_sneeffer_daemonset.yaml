@@ -45,15 +45,18 @@ metadata:
   namespace: default
 data:
   SneefferConfigurationFile.txt: |
-    innerDataDirPath=/etc/sneeffer/data
-    kernelObjPath=/etc/sneeffer/resources/ebpf/kernel_obj.o
-    snifferEngineLoaderPath=/etc/sneeffer/resources/ebpf/sniffer
-    sbomCreatorPath=/etc/sneeffer/resources/sbom/syft
-    vulnCreatorPath=/etc/sneeffer/resources/vuln/grype
+    innerDataDirPath=./data
+    kernelObjPath=./resources/ebpf/kernel_obj.o
+    snifferEngineLoaderPath=./resources/ebpf/sniffer
+    sbomCreatorPath=./resources/sbom/syft
+    vulnCreatorPath=./resources/vuln/grype
     snifferTime=5
     loggerVerbose=INFO
-    crdFullDetailedPath=/etc/sneeffer/resources/k8s/crd-vuln-full-detailes.yaml
-    crdVulnSummaryPath=/etc/sneeffer/resources/k8s/crd-vuln-summary.yaml
+    crdFullDetailedPath=./resources/k8s/crd-vuln-full-detailes.yaml
+    crdVulnSummaryPath=./resources/k8s/crd-vuln-summary.yaml
+    myNode=minikube
+    enableContainerProfilingService=false
+    enableRelaventCVEsService=true
 ---
 apiVersion: apps/v1
 kind: DaemonSet
