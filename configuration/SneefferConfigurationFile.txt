@@ -8,5 +8,5 @@ loggerVerbose=INFO
 crdFullDetailedPath=./resources/k8s/crd-vuln-full-detailes.yaml
 crdVulnSummaryPath=./resources/k8s/crd-vuln-summary.yaml
 myNode=minikube
-enableContainerProfilingService=true
-enableRelaventCVEsService=false
+enableContainerProfilingService=false
+enableRelaventCVEsService=true
