@@ -71,7 +71,7 @@ jobs:
       
       - name: Set kernelspace image name
         id: image-name-kernelspace
-        run: echo '::set-output name=IMAGE_NAME::quay.io/${{ github.repository_owner }}/sneeffer-kernel'
+        run: echo '::set-output name=IMAGE_NAME::quay.io/${{ github.repository_owner }}/kernel-sneeffer'
       
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
