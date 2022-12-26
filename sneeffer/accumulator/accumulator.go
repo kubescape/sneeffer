@@ -129,7 +129,7 @@ func parseLine(line string) *MetadataAccumulator {
 	}
 	lineParts := strings.Split(line, "]::[")
 	if len(lineParts) != 8 {
-		logger.Print(logger.ERROR, false, "parseLine Timestamp fail line is %s\n\n", line)
+		logger.Print(logger.ERROR, false, "we have got unknown line format, line is %s\n\n", line)
 		return nil
 	}
 	Timestamp, err := convertStrigTimeToTimeOBJ(lineParts[0])
