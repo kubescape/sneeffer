@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kubescape/sneeffer/internal/config"
 	"github.com/kubescape/sneeffer/internal/logger"
 	"github.com/kubescape/sneeffer/internal/sniffer_engine"
 )
@@ -190,6 +191,9 @@ func (acc *CacheAccumulator) findIndexByTimestamp(t time.Time) (int, bool) {
 }
 
 func (acc *CacheAccumulator) accmulateOneLine(line string) {
+	if strings.Contains(line, "::["+config.GetMyContainerID()+"]::") {
+		return
+	}
 	metadataAcc := parseLine(line)
 	if metadataAcc != nil {
 		if metadataAcc.Cmd == "drop event occured\n" {

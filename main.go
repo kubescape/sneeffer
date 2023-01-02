@@ -23,13 +23,15 @@ func waitOnCacheAccumulatorProccessErrorCode(cacheAccumulatorErrorChan chan erro
 }
 
 func startingOperations() error {
-	err := vuln.DownloadVulnDB()
-	if err != nil {
-		return err
-	}
-	err = DB.CreateCRDs()
-	if err != nil {
-		return err
+	if config.IsRelaventCVEServiceEnabled() {
+		err := vuln.DownloadVulnDB()
+		if err != nil {
+			return err
+		}
+		err = DB.CreateCRDs()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

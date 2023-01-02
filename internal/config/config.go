@@ -15,6 +15,8 @@ const (
 	CONTAINER_PROFILING_SERVICE = "CONTAINER_PROFILING_SERVICE"
 )
 
+var myContainerID string
+
 var sycscallFilterForRelaventCVES []string
 var sycscallFilterForContainerProfiling []string
 
@@ -170,4 +172,12 @@ func IsRelaventCVEServiceEnabled() bool {
 
 func IsContainerProfilingServiceEnabled() bool {
 	return containerProfilingService
+}
+
+func SetMyContainerID(ContainerID string) {
+	myContainerID = ContainerID
+}
+
+func GetMyContainerID() string {
+	return myContainerID
 }

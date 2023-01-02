@@ -417,10 +417,19 @@ func (containerWatcher *ContainerWatcher) StartWatchingOnNewContainers() error {
 				continue
 			}
 			switch event.Type {
+			case watch.Added:
+				for i := range pod.Status.ContainerStatuses {
+					if *pod.Status.ContainerStatuses[i].Started {
+						if strings.Contains(pod.GetName(), "kubescape-sneeffer") {
+							config.SetMyContainerID(getShortContainerID(pod.Status.ContainerStatuses[i].ContainerID))
+						}
+					}
+				}
 			case watch.Modified:
 				for i := range pod.Status.ContainerStatuses {
 					if *pod.Status.ContainerStatuses[i].Started && !containerWatcher.isContainerWatched(pod.Status.ContainerStatuses[i].ContainerID) {
 						if strings.Contains(pod.GetName(), "kubescape-sneeffer") {
+							config.SetMyContainerID(getShortContainerID(pod.Status.ContainerStatuses[i].ContainerID))
 							continue
 						}
 
