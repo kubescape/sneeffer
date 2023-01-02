@@ -266,7 +266,7 @@ func newCRClient(CRType string) (*CRClient, error) {
 	return &CRClient{restClient: client}, nil
 }
 
-func SetDataInDB(vulnData *vuln.ProccesedVulnData, containerProfilingData *container_profiling.SeccompData, resourceName string) error {
+func SetDataInDB(vulnData *vuln.ProccesedVulnData, containerProfilingData *container_profiling.SeccompData, resourceName, service string) error {
 	err := connectToDB()
 	if err != nil {
 		return err
@@ -275,7 +275,7 @@ func SetDataInDB(vulnData *vuln.ProccesedVulnData, containerProfilingData *conta
 	resourceName = strings.ReplaceAll(resourceName, ":", ".tag-")
 	resourceName = utils.ReplaceChars(resourceName, allowedCharsForK8sResourceName, "-")
 
-	if config.IsRelaventCVEServiceEnabled() {
+	if config.IsRelaventCVEServiceEnabled() && service == config.RELAVENT_CVES_SERVICE {
 		CRSummaryClient, err := newCRClient(summaryType)
 		if err != nil {
 			return err
@@ -370,7 +370,7 @@ func SetDataInDB(vulnData *vuln.ProccesedVulnData, containerProfilingData *conta
 		logger.Print(logger.INFO, false, "please run the following command to see the result in full detaileds: kubectl get %s.%s %s -o yaml\n", getPluralName(fullDetailedType), getGroupName(fullDetailedType), resourceName)
 	}
 
-	if config.IsContainerProfilingServiceEnabled() {
+	if config.IsContainerProfilingServiceEnabled() && service == config.CONTAINER_PROFILING_SERVICE {
 		CRContainerProfiling, err := newCRClient(containerProfilingType)
 		if err != nil {
 			return err

@@ -36,10 +36,11 @@ type containersAccumalator struct {
 }
 
 type CacheAccumulator struct {
-	accumultorData               []map[string][]MetadataAccumulator
-	firstMapKeysOfAccumultorData []string
-	CacheAccumulatorSize         int
-	containersData               containersAccumalator
+	accumultorData                  []map[string][]MetadataAccumulator
+	syncReaderWriterAccumulatorData sync.Mutex
+	firstMapKeysOfAccumultorData    []string
+	CacheAccumulatorSize            int
+	containersData                  containersAccumalator
 }
 
 type ContainerAccumulator struct {
@@ -209,6 +210,7 @@ func (acc *CacheAccumulator) accmulateOneLine(line string) {
 				// logger.Print(logger.DEBUG, false, "metadataAcc %v\n", metadataAcc)
 				return
 			}
+			acc.syncReaderWriterAccumulatorData.Lock()
 			if createNewMap {
 				slice := make([]MetadataAccumulator, 0)
 				m := make(map[string][]MetadataAccumulator)
@@ -219,6 +221,7 @@ func (acc *CacheAccumulator) accmulateOneLine(line string) {
 			a := acc.accumultorData[index]
 			a[metadataAcc.ContainerID] = append(a[metadataAcc.ContainerID], *metadataAcc)
 			acc.accumultorData[index][metadataAcc.ContainerID] = append(acc.accumultorData[index][metadataAcc.ContainerID], *metadataAcc)
+			acc.syncReaderWriterAccumulatorData.Unlock()
 
 			if acc.containersData.unregisterContainerState || acc.containersData.registerContainerState {
 				acc.containersData.registerMutex.Lock()
@@ -297,7 +300,9 @@ func (acc *CacheAccumulator) AccumulatorByContainerID(aggregationData *[]Metadat
 	}
 	for i := range acc.accumultorData {
 		for j := range acc.accumultorData[i][containerID] {
+			acc.syncReaderWriterAccumulatorData.Lock()
 			*aggregationData = append(*aggregationData, acc.accumultorData[i][containerID][j])
+			acc.syncReaderWriterAccumulatorData.Unlock()
 		}
 	}
 	logger.Print(logger.DEBUG, false, "data %v\n", aggregationData)

@@ -10,6 +10,11 @@ import (
 	"github.com/kubescape/sneeffer/internal/logger"
 )
 
+const (
+	RELAVENT_CVES_SERVICE       = "RELAVENT_CVES_SERVICE"
+	CONTAINER_PROFILING_SERVICE = "CONTAINER_PROFILING_SERVICE"
+)
+
 var sycscallFilterForRelaventCVES []string
 var sycscallFilterForContainerProfiling []string
 

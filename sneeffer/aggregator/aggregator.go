@@ -10,11 +10,12 @@ import (
 	"github.com/kubescape/sneeffer/sneeffer/utils"
 )
 
+// unknownSyscall is list of syscall that our ebpf
 var unknownSyscall []string
 var duplicateSyscall map[string]string
 
 func init() {
-	unknownSyscall = append(unknownSyscall, []string{"putpmsg", "afs_syscall", "tuxcall", "security", "vserver", "ppoll"}...)
+	unknownSyscall = append(unknownSyscall, []string{"putpmsg", "afs_syscall", "tuxcall", "security", "vserver", "ppoll", "rt_sigreturn", "_sysctl", "iopl", "ioperm", "create_module", "get_kernel_syms", "query_module", "quotactl", "nfsservctl", "getpmsg", "lookup_dcookie", "mbind", "set_mempolicy", "get_mempolicy", "migrate_pages", "move_pages", "name_to_handle_at", "kcmp", "kexec_file_load", "pkey_mprotect", "pkey_alloc", "pkey_free"}...)
 	duplicateSyscall = make(map[string]string)
 	duplicateSyscall["pread"] = "pread64"
 	duplicateSyscall["pwrite"] = "pwrite64"
@@ -166,7 +167,7 @@ func (aggregator *Aggregator) GetContainerRealtimeSyscalls() []string {
 	snifferRealtimeSyscallList = addUnknownSyscalls(snifferRealtimeSyscallList)
 
 	sort.Strings(snifferRealtimeSyscallList)
-	logger.Print(logger.INFO, false, "GetContainerRealtimeSyscalls: list size %d\n", len(snifferRealtimeSyscallList))
-	logger.Print(logger.INFO, false, "GetContainerRealtimeSyscalls: list %v\n", snifferRealtimeSyscallList)
+	logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: list size %d\n", len(snifferRealtimeSyscallList))
+	logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: list %v\n", snifferRealtimeSyscallList)
 	return snifferRealtimeSyscallList
 }
