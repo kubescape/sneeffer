@@ -28,10 +28,10 @@ func startingOperations() error {
 		if err != nil {
 			return err
 		}
-		err = DB.CreateCRDs()
-		if err != nil {
-			return err
-		}
+	}
+	err := DB.CreateCRDs()
+	if err != nil {
+		return err
 	}
 	return nil
 }
