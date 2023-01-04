@@ -16,7 +16,7 @@
     3. kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/security-profiles-operator/main/deploy/operator.yaml
 
 ## feature installation 
-    kubectl apply -f https://raw.githubusercontent.com/kubescape/sneeffer/master/kubescape_sneeffer_daemonset.yaml
+    kubectl apply -f https://raw.githubusercontent.com/kubescape/sneeffer/master/kubescape_sneeffer_Daemonset_seccomp_profile_and_relevent_CVEs.yaml
 
     with the following config map data:
 
