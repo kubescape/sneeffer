@@ -7,6 +7,7 @@ on:
       # Do not run the pipeline if only Markdown files changed
       - '**.md'
       - '**kubescape_sneeffer_Daemonset.yaml'
+      - '**kubescape_sneeffer_Daemonset_seccomp_profile_and_relevent_CVEs.yaml'
 jobs:
   test:
     name: Create cross-platform release build, tag and upload binaries 
