@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kubescape/sneeffer/internal/config"
 	"github.com/kubescape/sneeffer/internal/logger"
 	"github.com/kubescape/sneeffer/sneeffer/accumulator"
 	"github.com/kubescape/sneeffer/sneeffer/utils"
@@ -170,4 +171,46 @@ func (aggregator *Aggregator) GetContainerRealtimeSyscalls() []string {
 	logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: list size %d\n", len(snifferRealtimeSyscallList))
 	logger.Print(logger.DEBUG, false, "GetContainerRealtimeSyscalls: list %v\n", snifferRealtimeSyscallList)
 	return snifferRealtimeSyscallList
+}
+
+func parsePeerToPeerIPs(snifferData accumulator.MetadataAccumulator, syscallName string) string {
+	var clientIP string
+	var serverIP string
+	var port string
+
+	if strings.Contains(snifferData.SyscallType, "->") {
+		clientIP = utils.Between(snifferData.SyscallType, "tuple: ", ":")
+		serverIP = utils.Between(snifferData.SyscallType, "->", ":")
+		switch syscallName {
+		case "connect":
+			tempStr := utils.Between(snifferData.SyscallType, "->", ")")
+			index := strings.Index(tempStr, ":")
+			port = tempStr[index+1:]
+		case "accept":
+			tempStr := utils.Between(snifferData.SyscallType, "tuple: ", " queuepct")
+			tempStr2 := utils.Between(tempStr, "->", ",")
+			port = strings.Split(tempStr2, ":")[1]
+
+		}
+		return clientIP + "->" + serverIP + ":" + port
+	}
+	return ""
+}
+
+func (aggregator *Aggregator) GetNetworkMapping() map[string][]string {
+	networkMap := make(map[string][]string)
+
+	networkMap["connect"] = make([]string, 0)
+	networkMap["accept"] = make([]string, 0)
+	for i := range aggregator.aggregationData {
+		syscallName := parseSyscallName(aggregator.aggregationData[i])
+		if contains(syscallName, config.GetSycscallFilterForNetworkMonitoring()) {
+			peerToPeer := parsePeerToPeerIPs(aggregator.aggregationData[i], syscallName)
+			if strings.Contains(peerToPeer, "->") && !contains(peerToPeer, networkMap[syscallName]) {
+				networkMap[syscallName] = append(networkMap[syscallName], peerToPeer)
+			}
+		}
+	}
+
+	return networkMap
 }

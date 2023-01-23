@@ -1,6 +1,7 @@
 package DB
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,16 +11,19 @@ import (
 	"github.com/kubescape/sneeffer/internal/logger"
 	"github.com/kubescape/sneeffer/sneeffer/container_profiling"
 	global_data "github.com/kubescape/sneeffer/sneeffer/global_data/k8s"
+	"github.com/kubescape/sneeffer/sneeffer/network_policy"
 	"github.com/kubescape/sneeffer/sneeffer/utils"
 	"github.com/kubescape/sneeffer/sneeffer/vuln"
 
+	"gopkg.in/yaml.v2"
+	k8snetworkingv1 "k8s.io/api/networking/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextension "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	k8sapierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/yaml"
+	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -29,6 +33,7 @@ const (
 	summaryType                    = "summary"
 	fullDetailedType               = "fullDetailed"
 	containerProfilingType         = "containerProfiling"
+	networkPolicyType              = "networkPolicy"
 	allowedCharsForK8sResourceName = "abcdefghijklmnopqrstuvwxyz0123456789-."
 )
 
@@ -58,6 +63,12 @@ type ContainerProfiling struct {
 	Spec          container_profiling.SeccompData `json:"spec"`
 }
 
+type NetworkPolicy struct {
+	v1.TypeMeta   `json:",inline"`
+	v1.ObjectMeta `json:"metadata,omitempty"`
+	Spec          network_policy.NetworkPolicyGen `json:"spec"`
+}
+
 var client *DBClient
 var restConfig *rest.Config
 
@@ -75,6 +86,11 @@ var groupNameContainerProfilingCR string
 var groupVersionContainerProfilingCR string
 var kindContainerProfilingCR string
 var pluralNameContainerProfilingCR string
+
+var groupNameNetworkPolicyCR string
+var groupVersionNetworkPolicyCR string
+var kindNetworkPolicyCR string
+var pluralNameNetworkPolicyCR string
 
 func (in *RuntimeVulnSummary) DeepCopyInto(out *RuntimeVulnSummary) {
 	out.TypeMeta = in.TypeMeta
@@ -115,13 +131,26 @@ func (in *ContainerProfiling) DeepCopyObject() runtime.Object {
 	return &out
 }
 
+func (in *NetworkPolicy) DeepCopyInto(out *NetworkPolicy) {
+	out.TypeMeta = in.TypeMeta
+	out.ObjectMeta = in.ObjectMeta
+	out.Spec = in.Spec
+}
+
+func (in *NetworkPolicy) DeepCopyObject() runtime.Object {
+	out := NetworkPolicy{}
+	in.DeepCopyInto(&out)
+
+	return &out
+}
+
 func parseCRD(CRDPath string) (*apiextensionsv1.CustomResourceDefinition, error) {
 	crd := &apiextensionsv1.CustomResourceDefinition{}
 	CRDbytes, err := utils.FileBytes(CRDPath)
 	if err != nil {
 		return nil, err
 	}
-	err = yaml.Unmarshal(CRDbytes, crd)
+	err = k8syaml.Unmarshal(CRDbytes, crd)
 	if err != nil {
 		return nil, err
 	}
@@ -178,6 +207,24 @@ func CreateCRDs() error {
 		pluralNameContainerProfilingCR = "seccompprofiles"
 	}
 
+	if config.IsMonitorNetworkingServiceEnabled() {
+		CRDNetworkPolicyPath, _ := os.LookupEnv("crdNetworkPolicyPath")
+		CRDNetworkPolicy, err := parseCRD(CRDNetworkPolicyPath)
+		if err != nil {
+			logger.Print(logger.ERROR, false, "CreateCRDs: fail on parse CRD of CRDNetworkPolicyPath\n")
+			return err
+		}
+		groupNameNetworkPolicyCR = CRDNetworkPolicy.Spec.Group
+		groupVersionNetworkPolicyCR = CRDNetworkPolicy.Spec.Versions[0].Name
+		kindNetworkPolicyCR = CRDNetworkPolicy.Spec.Names.Kind
+		pluralNameNetworkPolicyCR = CRDNetworkPolicy.Spec.Names.Plural
+		logger.Print(logger.DEBUG, false, "kindNetworkPolicyCR %s\n", kindNetworkPolicyCR)
+		_, err = client.k8sClient.ApiextensionsV1().CustomResourceDefinitions().Create(global_data.GlobalHTTPContext, CRDNetworkPolicy, v1.CreateOptions{})
+		if err != nil && !k8sapierrors.IsAlreadyExists(err) {
+			logger.Print(logger.ERROR, false, "CreateCRDs: fail create CRD of CRDNetworkPolicyPath\n")
+			return err
+		}
+	}
 	return nil
 }
 
@@ -221,6 +268,8 @@ func getGroupName(CRType string) string {
 		return groupNameSummaryCR
 	} else if CRType == fullDetailedType {
 		return groupNameFullCRDetailes
+	} else if CRType == networkPolicyType {
+		return groupNameNetworkPolicyCR
 	}
 	return groupNameContainerProfilingCR
 }
@@ -230,6 +279,8 @@ func getGroupVersion(CRType string) string {
 		return groupVersionSummaryCR
 	} else if CRType == fullDetailedType {
 		return groupVersionFullCRDetailes
+	} else if CRType == networkPolicyType {
+		return groupVersionNetworkPolicyCR
 	}
 	return groupVersionContainerProfilingCR
 }
@@ -239,6 +290,8 @@ func getGroupKind(CRType string) string {
 		return kindSummaryCR
 	} else if CRType == fullDetailedType {
 		return kindFullCRDetailes
+	} else if CRType == networkPolicyType {
+		return kindNetworkPolicyCR
 	}
 	return kindContainerProfilingCR
 }
@@ -248,6 +301,8 @@ func getPluralName(CRType string) string {
 		return pluralNameSummaryCR
 	} else if CRType == fullDetailedType {
 		return pluralNameFullCRDetailes
+	} else if CRType == networkPolicyType {
+		return pluralNameNetworkPolicyCR
 	}
 	return pluralNameContainerProfilingCR
 }
@@ -266,7 +321,7 @@ func newCRClient(CRType string) (*CRClient, error) {
 	return &CRClient{restClient: client}, nil
 }
 
-func SetDataInDB(vulnData *vuln.ProccesedVulnData, containerProfilingData *container_profiling.SeccompData, resourceName, service string) error {
+func SetDataInDB(vulnData *vuln.ProccesedVulnData, containerProfilingData *container_profiling.SeccompData, np *k8snetworkingv1.NetworkPolicy, resourceName, service string) error {
 	err := connectToDB()
 	if err != nil {
 		return err
@@ -412,6 +467,58 @@ func SetDataInDB(vulnData *vuln.ProccesedVulnData, containerProfilingData *conta
 			}
 		}
 		logger.Print(logger.INFO, false, "please run the following command to see the result in full detaileds: kubectl -n security-profiles-operator get %s.%s %s -o yaml\n", getPluralName(containerProfilingType), getGroupName(containerProfilingType), resourceName)
+	}
+
+	if config.IsMonitorNetworkingServiceEnabled() && service == config.MONITOR_NETWORK_SERVICE {
+		yamlData, err := yaml.Marshal(*np)
+		if err != nil {
+			return fmt.Errorf("fail to marshal the yaml of the network policy of k8s resourceName %s with error %s", resourceName, err.Error())
+		}
+
+		CRNetworkPolicy, err := newCRClient(networkPolicyType)
+		if err != nil {
+			return err
+		}
+
+		networkPolicyResult := NetworkPolicy{}
+		networkPolicy := &NetworkPolicy{
+			TypeMeta: v1.TypeMeta{
+				APIVersion: getGroupName(networkPolicyType) + "/" + getGroupVersion(networkPolicyType),
+				Kind:       getGroupKind(networkPolicyType),
+			},
+			ObjectMeta: v1.ObjectMeta{
+				Name: resourceName,
+			},
+			Spec: network_policy.NetworkPolicyGen{
+				K8sAncestorName: resourceName,
+				NetworkPolicy:   string(yamlData),
+			},
+		}
+
+		err = CRNetworkPolicy.restClient.Post().Resource(getPluralName(networkPolicyType)).Body(networkPolicy).Do(global_data.GlobalHTTPContext).Into(&networkPolicyResult)
+		if err != nil {
+			if strings.Contains(err.Error(), "already exists") {
+				logger.Print(logger.INFO, false, "%s already exists, check if need to update vulns\n", resourceName)
+				err = CRNetworkPolicy.restClient.Get().Resource(getPluralName(networkPolicyType)).Name(resourceName).Do(global_data.GlobalHTTPContext).Into(&networkPolicyResult)
+				if err != nil {
+					logger.Print(logger.WARNING, false, "fail to get resource %s for check if update needed with err %v\n", resourceName, err)
+				} else {
+					if equal := reflect.DeepEqual(networkPolicyResult.Spec, networkPolicy.Spec); !equal {
+						logger.Print(logger.INFO, false, "the vuln data of resource %s has changed, updating\n", resourceName)
+						networkPolicy.ObjectMeta.ResourceVersion = networkPolicyResult.GetObjectMeta().GetResourceVersion()
+						err = CRNetworkPolicy.restClient.Put().Resource(getPluralName(containerProfilingType)).Namespace("security-profiles-operator").Name(networkPolicy.GetName()).Body(networkPolicy).Do(global_data.GlobalHTTPContext).Into(&networkPolicyResult)
+						if err != nil {
+							logger.Print(logger.ERROR, false, "fail to update resource %s with err %v\n", resourceName, err)
+						}
+					} else {
+						logger.Print(logger.INFO, false, "the vuln data of resource %s not changed, no update is needed\n", resourceName)
+					}
+				}
+			} else {
+				return err
+			}
+		}
+		logger.Print(logger.INFO, false, "please run the following command to see the result in full detaileds: kubectl -n security-profiles-operator get %s.%s %s -o yaml\n", getPluralName(networkPolicyType), getGroupName(networkPolicyType), resourceName)
 	}
 
 	return nil

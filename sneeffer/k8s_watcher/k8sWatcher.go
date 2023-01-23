@@ -15,14 +15,18 @@ import (
 	"github.com/kubescape/sneeffer/sneeffer/aggregator"
 	"github.com/kubescape/sneeffer/sneeffer/container_profiling"
 	global_data "github.com/kubescape/sneeffer/sneeffer/global_data/k8s"
+	"github.com/kubescape/sneeffer/sneeffer/k8s_network"
 	"github.com/kubescape/sneeffer/sneeffer/sbom"
+	"github.com/kubescape/sneeffer/sneeffer/utils"
 	"github.com/kubescape/sneeffer/sneeffer/vuln"
 	apiextension "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 
 	"github.com/kubescape/k8s-interface/cloudsupport"
 	"github.com/kubescape/sneeffer/internal/config"
 	core "k8s.io/api/core/v1"
+	k8snetworkingv1 "k8s.io/api/networking/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -41,11 +45,15 @@ type k8sTripeletIdentity struct {
 	imageName       string
 }
 
+type relaventCVEsDataStructure struct {
+	sbomObject *sbom.SbomObject
+	vulnObject *vuln.VulnObject
+}
+
 type watchedContainer struct {
 	containerAggregator       *aggregator.Aggregator
 	containerAggregatorStatus bool
-	sbomObject                *sbom.SbomObject
-	vulnObject                *vuln.VulnObject
+	relaventCVEsData          *relaventCVEsDataStructure
 	imageID                   string
 	podName                   string
 	snifferTimer              *time.Timer
@@ -65,7 +73,17 @@ type ContainerWatcher struct {
 	afterTimerActionsChannel chan afterTimerActionsData
 }
 
+type podNetworkMapData struct {
+	namespace      string
+	podLabels      map[string]string
+	podIPs         []string
+	podServicesIPs []string
+}
+
 var containerWatcher *ContainerWatcher
+var podsNetworkMap map[string]*podNetworkMapData
+var ipToPodMap map[string]string
+var serviceIPToPodMap map[string]string
 
 func getMyNode(clientset *kubernetes.Clientset) (string, error) {
 	nodeName, exist := os.LookupEnv("myNode")
@@ -110,6 +128,11 @@ func CreateContainerWatcher() (*ContainerWatcher, error) {
 		nodeName:                 nodeName,
 		afterTimerActionsChannel: make(chan afterTimerActionsData, 10),
 	}
+
+	podsNetworkMap = make(map[string]*podNetworkMapData)
+	ipToPodMap = make(map[string]string)
+	serviceIPToPodMap = make(map[string]string)
+
 	return containerWatcher, nil
 }
 
@@ -135,9 +158,108 @@ func getK8SResourceName(containerData *watchedContainer) string {
 	return "namespace-" + containerData.k8sIdentity.namespace + "." + containerData.k8sIdentity.k8sAncestorType + ".imagename-" + containerData.k8sIdentity.imageName
 }
 
+func getClientPeerPod(connection string) (string, bool) {
+	clientIP := strings.Split(connection, "->")[0]
+	podName, exist := ipToPodMap[clientIP]
+	if !exist {
+		podName, exist = serviceIPToPodMap[clientIP]
+	}
+	return podName, exist
+}
+
+func getServerPeerPod(connection string) (string, bool) {
+	serverIP := utils.Between(connection, "->", ":")
+	podName, exist := ipToPodMap[serverIP]
+	if !exist {
+		podName, exist = serviceIPToPodMap[serverIP]
+	}
+	return podName, exist
+}
+
+func parseIngressRules(fromRuntimeConnection []string) []k8snetworkingv1.NetworkPolicyIngressRule {
+	rules := make([]k8snetworkingv1.NetworkPolicyIngressRule, 0)
+	for i := range fromRuntimeConnection {
+		podName, exist := getClientPeerPod(fromRuntimeConnection[i])
+		if exist {
+			rule := k8snetworkingv1.NetworkPolicyIngressRule{
+				From: []k8snetworkingv1.NetworkPolicyPeer{
+					k8snetworkingv1.NetworkPolicyPeer{
+						PodSelector: &v1.LabelSelector{
+							MatchLabels: podsNetworkMap[podName].podLabels,
+						},
+						IPBlock: &k8snetworkingv1.IPBlock{
+							CIDR: fromRuntimeConnection[i][:strings.Index(fromRuntimeConnection[i], "->")] + "/32",
+						},
+					},
+				},
+			}
+			rules = append(rules, rule)
+		}
+	}
+	return rules
+}
+
+func parseEgressRules(fromRuntimeConnection []string) []k8snetworkingv1.NetworkPolicyEgressRule {
+	rules := make([]k8snetworkingv1.NetworkPolicyEgressRule, 0)
+	for i := range fromRuntimeConnection {
+		podName, exist := getServerPeerPod(fromRuntimeConnection[i])
+		if exist {
+			protocol := core.Protocol(core.ProtocolTCP)
+			rule := k8snetworkingv1.NetworkPolicyEgressRule{
+				To: []k8snetworkingv1.NetworkPolicyPeer{
+					k8snetworkingv1.NetworkPolicyPeer{
+						PodSelector: &v1.LabelSelector{
+							MatchLabels: podsNetworkMap[podName].podLabels,
+						},
+						IPBlock: &k8snetworkingv1.IPBlock{
+							CIDR: utils.Between(fromRuntimeConnection[i], "->", ":") + "/32",
+						},
+					},
+				},
+				Ports: []k8snetworkingv1.NetworkPolicyPort{
+					k8snetworkingv1.NetworkPolicyPort{
+						Protocol: &protocol,
+						Port: &intstr.IntOrString{
+							Type:   1,
+							StrVal: strings.Split(fromRuntimeConnection[i], ":")[1],
+						},
+					},
+				},
+			}
+			rules = append(rules, rule)
+		}
+	}
+	return rules
+}
+
+func (containerWatcher *ContainerWatcher) createRuntimeNetworkPolicy(networkRuntimeMap map[string][]string, containerID string) *k8snetworkingv1.NetworkPolicy {
+	containerData := containerWatcher.watchedContainers[containerID]
+
+	ingressPolicies := parseIngressRules(networkRuntimeMap["accept"])
+	egressPolicies := parseEgressRules(networkRuntimeMap["connect"])
+
+	return &k8snetworkingv1.NetworkPolicy{
+		TypeMeta: v1.TypeMeta{
+			APIVersion: "networking.k8s.io/v1",
+			Kind:       "NetworkPolicy",
+		},
+		ObjectMeta: v1.ObjectMeta{
+			Name:      "NetworkPolicy: " + containerData.podName,
+			Namespace: containerData.k8sIdentity.namespace,
+			Labels:    map[string]string{},
+		},
+		Spec: k8snetworkingv1.NetworkPolicySpec{
+			PolicyTypes: []k8snetworkingv1.PolicyType{"Ingress", "Egress"},
+			Ingress:     ingressPolicies,
+			Egress:      egressPolicies,
+		},
+	}
+}
+
 func (containerWatcher *ContainerWatcher) afterTimerActions() error {
 	var err error
 	var syscallList []string
+	var networkRuntimeMap map[string][]string
 
 	for {
 		afterTimerActionsData := <-containerWatcher.afterTimerActionsChannel
@@ -150,7 +272,7 @@ func (containerWatcher *ContainerWatcher) afterTimerActions() error {
 				logger.Print(logger.ERROR, false, "afterTimerActions: failed to get sbom with err %v\n", err)
 				continue
 			}
-			err = containerData.sbomObject.FilterSbom(fileList)
+			err = containerData.relaventCVEsData.sbomObject.FilterSbom(fileList)
 			if err != nil {
 				logger.Print(logger.ERROR, false, "afterTimerActions: failed to filter sbom with err %v\n", err)
 				continue
@@ -160,22 +282,36 @@ func (containerWatcher *ContainerWatcher) afterTimerActions() error {
 				logger.Print(logger.ERROR, false, "afterTimerActions: failed to get unfilter vulns with err %v\n", err)
 				continue
 			}
-			err = containerData.vulnObject.GetFilterVulnerabilities()
+			err = containerData.relaventCVEsData.vulnObject.GetFilterVulnerabilities()
 			if err != nil {
 				logger.Print(logger.ERROR, false, "afterTimerActions: failed to get filter vulns with err %v\n", err)
+				continue
+			}
+			err = DB.SetDataInDB(containerData.relaventCVEsData.vulnObject.GetProcessedData(), nil, nil, resourceName, afterTimerActionsData.service)
+			if err != nil {
+				logger.Print(logger.ERROR, false, "afterTimerActions: failed to set data in the DB with err %v\n", err)
 				continue
 			}
 		}
 
 		if config.IsContainerProfilingServiceEnabled() && afterTimerActionsData.service == config.CONTAINER_PROFILING_SERVICE {
 			syscallList = containerData.containerAggregator.GetContainerRealtimeSyscalls()
+			err = DB.SetDataInDB(nil, container_profiling.CreateSeccompProfile(syscallList), nil, resourceName, afterTimerActionsData.service)
+			if err != nil {
+				logger.Print(logger.ERROR, false, "afterTimerActions: failed to set data in the DB with err %v\n", err)
+				continue
+			}
 		}
 
-		err = DB.SetDataInDB(containerData.vulnObject.GetProcessedData(), container_profiling.CreateSeccompProfile(syscallList), resourceName, afterTimerActionsData.service)
-		if err != nil {
-			logger.Print(logger.ERROR, false, "afterTimerActions: failed to set data in the DB with err %v\n", err)
-			continue
+		if config.IsMonitorNetworkingServiceEnabled() && afterTimerActionsData.service == config.MONITOR_NETWORK_SERVICE {
+			networkRuntimeMap = containerData.containerAggregator.GetNetworkMapping()
+			err = DB.SetDataInDB(nil, nil, containerWatcher.createRuntimeNetworkPolicy(networkRuntimeMap, afterTimerActionsData.containerID), resourceName, afterTimerActionsData.service)
+			if err != nil {
+				logger.Print(logger.ERROR, false, "afterTimerActions: failed to set data in the DB with err %v\n", err)
+				continue
+			}
 		}
+
 	}
 }
 
@@ -226,6 +362,12 @@ func (containerWatcher *ContainerWatcher) startTimer(containerID string) {
 				service:     config.RELAVENT_CVES_SERVICE,
 			}
 		}
+		if config.IsMonitorNetworkingServiceEnabled() {
+			containerWatcher.afterTimerActionsChannel <- afterTimerActionsData{
+				containerID: containerID,
+				service:     config.MONITOR_NETWORK_SERVICE,
+			}
+		}
 	case err = <-containerData.syncChannel[STEP_AGGREGATOR]:
 		if err.Error() == "drop event occured\n" {
 			containerData.containerAggregatorStatus = false
@@ -239,13 +381,18 @@ func (containerWatcher *ContainerWatcher) StartFindRelaventCVEsPrerequisites(con
 	containerData := containerWatcher.watchedContainers[containerID]
 
 	/*phase 1: create sbom to image */
-	go containerData.sbomObject.CreateSbomUnfilter(containerData.syncChannel[STEP_GET_SBOM])
+	go containerData.relaventCVEsData.sbomObject.CreateSbomUnfilter(containerData.syncChannel[STEP_GET_SBOM])
 
 	/*phase 2: create sbom to image */
-	go containerData.vulnObject.GetImageVulnerabilities(containerData.syncChannel[STEP_GET_UNFILTER_VULNS])
+	go containerData.relaventCVEsData.vulnObject.GetImageVulnerabilities(containerData.syncChannel[STEP_GET_UNFILTER_VULNS])
 }
 
 func (containerWatcher *ContainerWatcher) StartContainerProfilingPrerequisites(containerID string) {
+	return
+}
+
+func (containerWatcher *ContainerWatcher) StartNetworkMonitoringPrerequisites(containerID string) {
+
 	return
 }
 
@@ -389,6 +536,124 @@ func getImageCredentialslist(pod *core.Pod, imageID string) []types.AuthConfig {
 	return credentialslist
 }
 
+func (containerWatcher *ContainerWatcher) preHandlePod(pod *core.Pod, containerIndex int) {
+	if strings.Contains(pod.GetName(), "kubescape-sneeffer") {
+		config.SetMyContainerID(getShortContainerID(pod.Status.ContainerStatuses[containerIndex].ContainerID))
+	}
+}
+
+func contains(needle string, haystack []string) bool {
+	for i := range haystack {
+		if haystack[i] == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func addPodNetworkMap(pod *core.Pod) {
+	podNetworkMap, exist := podsNetworkMap[pod.GetName()]
+	if !exist {
+		podNetworkMap = &podNetworkMapData{}
+		podsNetworkMap[pod.GetName()] = podNetworkMap
+	}
+	for i := range pod.Status.PodIPs {
+		if !contains(pod.Status.PodIPs[i].IP, podNetworkMap.podIPs) {
+			podNetworkMap.podIPs = append(podNetworkMap.podIPs, pod.Status.PodIPs[i].IP)
+			ipToPodMap[pod.Status.PodIPs[i].IP] = pod.GetName()
+		}
+	}
+	podNetworkMap.namespace = pod.GetNamespace()
+	podNetworkMap.podLabels = pod.GetLabels()
+	podNetworkMap.podServicesIPs = k8s_network.GetPodsServicesIPs(containerWatcher.k8sClient, pod)
+	for serviceIP := range podNetworkMap.podServicesIPs {
+		serviceIPToPodMap[podNetworkMap.podServicesIPs[serviceIP]] = pod.GetName()
+	}
+	logger.Print(logger.DEBUG, false, "podNetworkMap[%s] = %v\n", pod.GetName(), podNetworkMap)
+}
+
+func (containerWatcher *ContainerWatcher) handleAddPod(pod *core.Pod) {
+	addPodNetworkMap(pod)
+	if pod.Spec.NodeName == containerWatcher.nodeName {
+		for i := range pod.Status.ContainerStatuses {
+			if *pod.Status.ContainerStatuses[i].Started {
+				containerWatcher.preHandlePod(pod, i)
+			}
+		}
+	}
+}
+
+func (containerWatcher *ContainerWatcher) createWatchedContainerObject(pod *core.Pod, containerIndex int) {
+
+	newWatchedContainer := watchedContainer{
+		containerAggregator:       aggregator.CreateAggregator(getShortContainerID(pod.Status.ContainerStatuses[containerIndex].ContainerID), pod.Status.ContainerStatuses[containerIndex].State.Running.StartedAt),
+		containerAggregatorStatus: true,
+		imageID:                   pod.Status.ContainerStatuses[containerIndex].ImageID,
+		podName:                   pod.GetName(),
+		snifferTimer:              containerWatcher.createTimer(),
+		k8sIdentity:               containerWatcher.getK8SIdentityTripplet(pod, pod.Status.ContainerStatuses[containerIndex].Image),
+		syncChannel: map[string]chan error{
+			STEP_GET_SBOM:           make(chan error, 10),
+			STEP_GET_UNFILTER_VULNS: make(chan error, 10),
+			STEP_AGGREGATOR:         make(chan error, 10),
+		},
+	}
+
+	if config.IsRelaventCVEServiceEnabled() {
+		credentialslist := getImageCredentialslist(pod, pod.Status.ContainerStatuses[containerIndex].Image)
+		relaventCVEsData := &relaventCVEsDataStructure{}
+		sbomObject := sbom.CreateSbomObject(credentialslist, getImageID(pod.Status.ContainerStatuses[containerIndex].ImageID))
+		vulnObject := vuln.CreateVulnObject(credentialslist, getImageID(pod.Status.ContainerStatuses[containerIndex].ImageID), sbomObject)
+		relaventCVEsData.sbomObject = sbomObject
+		relaventCVEsData.vulnObject = vulnObject
+		newWatchedContainer.relaventCVEsData = relaventCVEsData
+
+	}
+	if config.IsContainerProfilingServiceEnabled() {
+	}
+	if config.IsMonitorNetworkingServiceEnabled() {
+	}
+
+	containerWatcher.watchedContainers[pod.Status.ContainerStatuses[containerIndex].ContainerID] = &newWatchedContainer
+}
+
+func (containerWatcher *ContainerWatcher) handleModifyPod(pod *core.Pod) {
+	addPodNetworkMap(pod)
+	if pod.Spec.NodeName == containerWatcher.nodeName {
+		for i := range pod.Status.ContainerStatuses {
+			if *pod.Status.ContainerStatuses[i].Started && !containerWatcher.isContainerWatched(pod.Status.ContainerStatuses[i].ContainerID) {
+				containerWatcher.preHandlePod(pod, i)
+				if strings.Contains(pod.GetName(), "kubescape-sneeffer") {
+					continue
+				}
+
+				containerWatcher.createWatchedContainerObject(pod, i)
+				if config.IsRelaventCVEServiceEnabled() {
+					containerWatcher.StartFindRelaventCVEsPrerequisites(pod.Status.ContainerStatuses[i].ContainerID)
+				}
+				if config.IsContainerProfilingServiceEnabled() {
+					containerWatcher.StartContainerProfilingPrerequisites(pod.Status.ContainerStatuses[i].ContainerID)
+				}
+				if config.IsMonitorNetworkingServiceEnabled() {
+					containerWatcher.StartNetworkMonitoringPrerequisites(pod.Status.ContainerStatuses[i].ContainerID)
+				}
+
+				logger.Print(logger.INFO, false, "start sniffing on container ID %s of image %s of k8s resource %s\n", pod.Status.ContainerStatuses[i].ContainerID, pod.Status.ContainerStatuses[i].Image, getK8SResourceName(containerWatcher.watchedContainers[pod.Status.ContainerStatuses[i].ContainerID]))
+
+				go containerWatcher.watchedContainers[pod.Status.ContainerStatuses[i].ContainerID].containerAggregator.StartAggregate(containerWatcher.watchedContainers[pod.Status.ContainerStatuses[i].ContainerID].syncChannel[STEP_AGGREGATOR])
+				go containerWatcher.startTimer(pod.Status.ContainerStatuses[i].ContainerID)
+			}
+		}
+	}
+}
+
+func (containerWatcher *ContainerWatcher) handleDeletePod(pod *core.Pod) {
+	delete(podsNetworkMap, pod.GetName())
+	for i := range pod.Status.PodIPs {
+		delete(ipToPodMap, pod.Status.PodIPs[i].IP)
+	}
+}
+
 func (containerWatcher *ContainerWatcher) StartWatchingOnNewContainers() error {
 	logger.Print(logger.INFO, false, "sneeffer is ready to watch over node %s\n", containerWatcher.nodeName)
 	go containerWatcher.afterTimerActions()
@@ -413,59 +678,13 @@ func (containerWatcher *ContainerWatcher) StartWatchingOnNewContainers() error {
 			if !ok {
 				continue
 			}
-			if pod.Spec.NodeName != containerWatcher.nodeName {
-				continue
-			}
 			switch event.Type {
 			case watch.Added:
-				for i := range pod.Status.ContainerStatuses {
-					if *pod.Status.ContainerStatuses[i].Started {
-						if strings.Contains(pod.GetName(), "kubescape-sneeffer") {
-							config.SetMyContainerID(getShortContainerID(pod.Status.ContainerStatuses[i].ContainerID))
-						}
-					}
-				}
+				containerWatcher.handleAddPod(pod)
 			case watch.Modified:
-				for i := range pod.Status.ContainerStatuses {
-					if *pod.Status.ContainerStatuses[i].Started && !containerWatcher.isContainerWatched(pod.Status.ContainerStatuses[i].ContainerID) {
-						if strings.Contains(pod.GetName(), "kubescape-sneeffer") {
-							config.SetMyContainerID(getShortContainerID(pod.Status.ContainerStatuses[i].ContainerID))
-							continue
-						}
-
-						credentialslist := getImageCredentialslist(pod, pod.Status.ContainerStatuses[i].Image)
-						sbomObject := sbom.CreateSbomObject(credentialslist, getImageID(pod.Status.ContainerStatuses[i].ImageID))
-						vulnObject := vuln.CreateVulnObject(credentialslist, getImageID(pod.Status.ContainerStatuses[i].ImageID), sbomObject)
-
-						containerWatcher.watchedContainers[pod.Status.ContainerStatuses[i].ContainerID] = &watchedContainer{
-							containerAggregator:       aggregator.CreateAggregator(getShortContainerID(pod.Status.ContainerStatuses[i].ContainerID), pod.Status.ContainerStatuses[i].State.Running.StartedAt),
-							containerAggregatorStatus: true,
-							sbomObject:                sbomObject,
-							vulnObject:                vulnObject,
-							imageID:                   pod.Status.ContainerStatuses[i].ImageID,
-							podName:                   pod.Name,
-							snifferTimer:              containerWatcher.createTimer(),
-							k8sIdentity:               containerWatcher.getK8SIdentityTripplet(pod, pod.Status.ContainerStatuses[i].Image),
-							syncChannel: map[string]chan error{
-								STEP_GET_SBOM:           make(chan error, 10),
-								STEP_GET_UNFILTER_VULNS: make(chan error, 10),
-								STEP_AGGREGATOR:         make(chan error, 10),
-							},
-						}
-
-						logger.Print(logger.INFO, false, "start sniffing on container ID %s of image %s of k8s resource %s\n", pod.Status.ContainerStatuses[i].ContainerID, pod.Status.ContainerStatuses[i].Image, getK8SResourceName(containerWatcher.watchedContainers[pod.Status.ContainerStatuses[i].ContainerID]))
-
-						if config.IsRelaventCVEServiceEnabled() {
-							containerWatcher.StartFindRelaventCVEsPrerequisites(pod.Status.ContainerStatuses[i].ContainerID)
-						}
-						if config.IsContainerProfilingServiceEnabled() {
-							containerWatcher.StartContainerProfilingPrerequisites(pod.Status.ContainerStatuses[i].ContainerID)
-						}
-						go containerWatcher.watchedContainers[pod.Status.ContainerStatuses[i].ContainerID].containerAggregator.StartAggregate(containerWatcher.watchedContainers[pod.Status.ContainerStatuses[i].ContainerID].syncChannel[STEP_AGGREGATOR])
-						go containerWatcher.startTimer(pod.Status.ContainerStatuses[i].ContainerID)
-					}
-				}
-				// case watch.Deleted:
+				containerWatcher.handleModifyPod(pod)
+			case watch.Deleted:
+				containerWatcher.handleDeletePod(pod)
 				// 	for i := range pod.Status.ContainerStatuses {
 				// 		if pod.Status.ContainerStatuses[i].State.Terminated != nil && containerWatcher.isContainerWatched(pod.Status.ContainerStatuses[i].State.Terminated.ContainerID) {
 				// 			//before stop watching create relavent sbom

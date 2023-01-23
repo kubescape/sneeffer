@@ -17,7 +17,8 @@ func Between(value string, a string, b string) string {
 	if posFirst == -1 {
 		return ""
 	}
-	posLast := strings.Index(value, b)
+	substr := value[posFirst+len(a):]
+	posLast := strings.Index(substr, b) + posFirst + len(a)
 	if posLast == -1 {
 		return ""
 	}

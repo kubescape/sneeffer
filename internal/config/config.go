@@ -13,18 +13,21 @@ import (
 const (
 	RELAVENT_CVES_SERVICE       = "RELAVENT_CVES_SERVICE"
 	CONTAINER_PROFILING_SERVICE = "CONTAINER_PROFILING_SERVICE"
+	MONITOR_NETWORK_SERVICE     = "MONITOR_NETWORK_SERVICE"
 )
 
 var myContainerID string
 
 var sycscallFilterForRelaventCVES []string
 var sycscallFilterForContainerProfiling []string
+var sycscallFilterForNetworkMonitoring []string
 
 var manadatoryConfigurationVars []string
 var innerDirectoriesPath []string
 
 var relaventCVEService bool
 var containerProfilingService bool
+var monitorNetworkingService bool
 
 func init() {
 	manadatoryConfigurationVars = append(manadatoryConfigurationVars, "kernelObjPath")
@@ -38,8 +41,10 @@ func init() {
 	innerDirectoriesPath = append(innerDirectoriesPath, "/sbom")
 	innerDirectoriesPath = append(innerDirectoriesPath, "/vuln")
 	sycscallFilterForRelaventCVES = append(sycscallFilterForRelaventCVES, []string{"execve", "execveat", "open", "openat"}...)
+	sycscallFilterForNetworkMonitoring = append(sycscallFilterForNetworkMonitoring, []string{"connect", "accept"}...)
 	containerProfilingService = false
 	relaventCVEService = false
+	monitorNetworkingService = false
 }
 
 func parseConfigurationFile(configurationFilePath string) error {
@@ -120,6 +125,14 @@ func servicesConfig() error {
 			logger.Print(logger.INFO, false, "sneeffer service container profiling is enabled\n")
 		}
 	}
+	val, exist = os.LookupEnv("enableNetworkMonitoringService")
+	if exist {
+		if val == "true" || val == "True" {
+			monitorNetworkingService = true
+			serviceExist = true
+			logger.Print(logger.INFO, false, "sneeffer service monitor network is enabled\n")
+		}
+	}
 	if !serviceExist {
 		return fmt.Errorf("no service is configured to use, please look in the configuration file that one of the services mark as true or True")
 	}
@@ -163,6 +176,12 @@ func GetSyscallFilter() []string {
 	if IsContainerProfilingServiceEnabled() {
 		return sycscallFilterForContainerProfiling
 	}
+	if IsMonitorNetworkingServiceEnabled() && IsRelaventCVEServiceEnabled() {
+		return append(sycscallFilterForNetworkMonitoring, sycscallFilterForRelaventCVES...)
+	}
+	if IsMonitorNetworkingServiceEnabled() {
+		return sycscallFilterForNetworkMonitoring
+	}
 	return sycscallFilterForRelaventCVES
 }
 
@@ -174,10 +193,18 @@ func IsContainerProfilingServiceEnabled() bool {
 	return containerProfilingService
 }
 
+func IsMonitorNetworkingServiceEnabled() bool {
+	return monitorNetworkingService
+}
+
 func SetMyContainerID(ContainerID string) {
 	myContainerID = ContainerID
 }
 
 func GetMyContainerID() string {
 	return myContainerID
+}
+
+func GetSycscallFilterForNetworkMonitoring() []string {
+	return sycscallFilterForNetworkMonitoring
 }
