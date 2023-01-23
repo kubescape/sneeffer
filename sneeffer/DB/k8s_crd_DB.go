@@ -498,27 +498,27 @@ func SetDataInDB(vulnData *vuln.ProccesedVulnData, containerProfilingData *conta
 		err = CRNetworkPolicy.restClient.Post().Resource(getPluralName(networkPolicyType)).Body(networkPolicy).Do(global_data.GlobalHTTPContext).Into(&networkPolicyResult)
 		if err != nil {
 			if strings.Contains(err.Error(), "already exists") {
-				logger.Print(logger.INFO, false, "%s already exists, check if need to update vulns\n", resourceName)
+				logger.Print(logger.INFO, false, "%s already exists, check if need to update network policy\n", resourceName)
 				err = CRNetworkPolicy.restClient.Get().Resource(getPluralName(networkPolicyType)).Name(resourceName).Do(global_data.GlobalHTTPContext).Into(&networkPolicyResult)
 				if err != nil {
 					logger.Print(logger.WARNING, false, "fail to get resource %s for check if update needed with err %v\n", resourceName, err)
 				} else {
 					if equal := reflect.DeepEqual(networkPolicyResult.Spec, networkPolicy.Spec); !equal {
-						logger.Print(logger.INFO, false, "the vuln data of resource %s has changed, updating\n", resourceName)
+						logger.Print(logger.INFO, false, "the network policy data of resource %s has changed, updating\n", resourceName)
 						networkPolicy.ObjectMeta.ResourceVersion = networkPolicyResult.GetObjectMeta().GetResourceVersion()
 						err = CRNetworkPolicy.restClient.Put().Resource(getPluralName(containerProfilingType)).Namespace("security-profiles-operator").Name(networkPolicy.GetName()).Body(networkPolicy).Do(global_data.GlobalHTTPContext).Into(&networkPolicyResult)
 						if err != nil {
 							logger.Print(logger.ERROR, false, "fail to update resource %s with err %v\n", resourceName, err)
 						}
 					} else {
-						logger.Print(logger.INFO, false, "the vuln data of resource %s not changed, no update is needed\n", resourceName)
+						logger.Print(logger.INFO, false, "the network policy of resource %s not changed, no update is needed\n", resourceName)
 					}
 				}
 			} else {
 				return err
 			}
 		}
-		logger.Print(logger.INFO, false, "please run the following command to see the result in full detaileds: kubectl -n security-profiles-operator get %s.%s %s -o yaml\n", getPluralName(networkPolicyType), getGroupName(networkPolicyType), resourceName)
+		logger.Print(logger.INFO, false, "please run the following command to see the result in full detaileds: kubectl get %s.%s %s -o yaml\n", getPluralName(networkPolicyType), getGroupName(networkPolicyType), resourceName)
 	}
 
 	return nil
