@@ -8,6 +8,7 @@ on:
       - '**.md'
       - '**kubescape_sneeffer_Daemonset.yaml'
       - '**kubescape_sneeffer_Daemonset_seccomp_profile_and_relevent_CVEs.yaml'
+      - '**kubescape_sneeffer_Daemonset_network_policy.yaml'
 jobs:
   test:
     name: Create cross-platform release build, tag and upload binaries 
