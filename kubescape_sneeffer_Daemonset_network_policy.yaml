@@ -150,7 +150,7 @@ spec:
           readOnly: true
       containers:
         - name: kubescape-sneeffer
-          image: quay.io/kubescape/sneeffer:v0.0.34
+          image: quay.io/kubescape/sneeffer:v0.0.35
           # command: ["/bin/bash"]
           # args: ["-c", "while true; do sleep 1000;done"]
           imagePullPolicy: Always
