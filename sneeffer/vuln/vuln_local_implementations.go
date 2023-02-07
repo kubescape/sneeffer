@@ -15,10 +15,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/docker/docker/api/types"
 	"github.com/kubescape/sneeffer/internal/logger"
+
 	"github.com/kubescape/sneeffer/sneeffer/sbom"
 	"github.com/kubescape/sneeffer/sneeffer/utils"
+
+	"github.com/docker/docker/api/types"
 	"github.com/xyproto/randomstring"
 	"gopkg.in/yaml.v2"
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/kubescape/sneeffer/internal/logger"
 	"github.com/kubescape/sneeffer/internal/validator"
+
 	"github.com/kubescape/sneeffer/sneeffer/DB"
 	"github.com/kubescape/sneeffer/sneeffer/accumulator"
 	"github.com/kubescape/sneeffer/sneeffer/k8s_watcher"

@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/kubescape/sneeffer/internal/logger"
+
+	"github.com/docker/docker/api/types"
 	"github.com/kubescape/sneeffer/sneeffer/DB"
 	"github.com/kubescape/sneeffer/sneeffer/aggregator"
 	"github.com/kubescape/sneeffer/sneeffer/container_profiling"

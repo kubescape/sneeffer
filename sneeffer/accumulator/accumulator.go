@@ -1,63 +1,51 @@
 package accumulator
 
 import (
-	"bufio"
-	"io"
-	"os/exec"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/kubescape/sneeffer/internal/config"
 	"github.com/kubescape/sneeffer/internal/logger"
-	"github.com/kubescape/sneeffer/internal/sniffer_engine"
+
+	"github.com/kubescape/sneeffer/sneeffer/accumulator_data_structure"
+
+	"github.com/kubescape/sneeffer/sneeffer/ebpf_engine"
+
+	"github.com/kubescape/sneeffer/internal/config"
 )
 
-type AccumulatorInterface interface {
-	accumulateSnifferData()
-}
-
-type MetadataAccumulator struct {
-	Timestamp       time.Time
-	ContainerID     string
-	SyscallCategory string
-	Ppid            string
-	Pid             string
-	SyscallType     string
-	Exe             string
-	Cmd             string
-}
-
 type containersAccumalator struct {
-	accumultorDataPerContainer map[string]chan MetadataAccumulator
+	accumultorDataPerContainer map[string]chan accumulator_data_structure.MetadataAccumulator
 	registerContainerState     bool
 	unregisterContainerState   bool
 	registerMutex              sync.Mutex
 }
 
 type CacheAccumulator struct {
-	accumultorData                  []map[string][]MetadataAccumulator
+	accumultorData                  []map[string][]accumulator_data_structure.MetadataAccumulator
 	syncReaderWriterAccumulatorData sync.Mutex
 	firstMapKeysOfAccumultorData    []string
-	CacheAccumulatorSize            int
+	cacheAccumulatorSize            int
+	mainDataChannel                 chan *accumulator_data_structure.MetadataAccumulator
 	containersData                  containersAccumalator
+	ebpfEngine                      ebpf_engine.EbpfEngineClient
 }
 
 type ContainerAccumulator struct {
-	dataChannel chan MetadataAccumulator
+	dataChannel chan accumulator_data_structure.MetadataAccumulator
 	containerID string
 }
 
 var cacheAccumuator *CacheAccumulator
 
-func CreateCacheAccumulator(CacheAccumulatorSize int) *CacheAccumulator {
+func CreateCacheAccumulator(cacheAccumulatorSize int) *CacheAccumulator {
 	cacheAccumuator = &CacheAccumulator{
-		CacheAccumulatorSize:         CacheAccumulatorSize,
-		accumultorData:               make([]map[string][]MetadataAccumulator, CacheAccumulatorSize),
-		firstMapKeysOfAccumultorData: make([]string, CacheAccumulatorSize),
+		cacheAccumulatorSize:         cacheAccumulatorSize,
+		accumultorData:               make([]map[string][]accumulator_data_structure.MetadataAccumulator, cacheAccumulatorSize),
+		firstMapKeysOfAccumultorData: make([]string, cacheAccumulatorSize),
+		mainDataChannel:              make(chan *accumulator_data_structure.MetadataAccumulator),
 		containersData: containersAccumalator{
-			accumultorDataPerContainer: make(map[string]chan MetadataAccumulator),
+			accumultorDataPerContainer: make(map[string]chan accumulator_data_structure.MetadataAccumulator),
 			registerContainerState:     false,
 			unregisterContainerState:   false,
 		},
@@ -66,98 +54,22 @@ func CreateCacheAccumulator(CacheAccumulatorSize int) *CacheAccumulator {
 	return cacheAccumuator
 }
 
-func CreateContainerAccumulator(containerID string, dataChannel chan MetadataAccumulator) *ContainerAccumulator {
+func CreateContainerAccumulator(containerID string, dataChannel chan accumulator_data_structure.MetadataAccumulator) *ContainerAccumulator {
 	return &ContainerAccumulator{
 		dataChannel: dataChannel,
 		containerID: containerID,
 	}
 }
 
-func convertStrigTimeToTimeOBJ(Timestamp string) (*time.Time, error) {
-	dateAndTime := strings.Split(Timestamp, "T")
-	date := strings.Split(dateAndTime[0], "-")
-	tm := strings.Split(dateAndTime[1], ":")
-
-	year, err := strconv.Atoi(date[0])
-	if err != nil {
-		logger.Print(logger.ERROR, false, "fail strconv %v\n", err)
-		return nil, err
-	}
-	month, err := strconv.Atoi(date[1])
-	if err != nil {
-		logger.Print(logger.ERROR, false, "fail strconv %v\n", err)
-		return nil, err
-	}
-	day, err := strconv.Atoi(date[2])
-	if err != nil {
-		logger.Print(logger.ERROR, false, "fail strconv %v\n", err)
-		return nil, err
-	}
-
-	hour, err := strconv.Atoi(tm[0])
-	if err != nil {
-		logger.Print(logger.ERROR, false, "fail strconv %v\n", err)
-		return nil, err
-	}
-	minute, err := strconv.Atoi(tm[1])
-	if err != nil {
-		logger.Print(logger.ERROR, false, "fail strconv %v\n", err)
-		return nil, err
-	}
-	seconds := strings.Split(tm[2], "+")
-	secs := strings.Split(seconds[0], ".")
-
-	sec, err := strconv.Atoi(secs[0])
-	if err != nil {
-		logger.Print(logger.ERROR, false, "fail strconv %v\n", err)
-		return nil, err
-	}
-
-	nsec, err := strconv.Atoi(secs[1])
-	if err != nil {
-		logger.Print(logger.ERROR, false, "fail strconv %v\n", err)
-		return nil, err
-	}
-
-	t := time.Date(year, time.Month(month), day, hour, minute, sec, nsec, time.Now().Location())
-	return &t, nil
+func (acc *CacheAccumulator) createNewMap(event *accumulator_data_structure.MetadataAccumulator, index int) {
+	slice := make([]accumulator_data_structure.MetadataAccumulator, 0)
+	m := make(map[string][]accumulator_data_structure.MetadataAccumulator)
+	m[event.ContainerID] = slice
+	acc.accumultorData[index] = m
+	acc.firstMapKeysOfAccumultorData[index] = event.ContainerID
 }
 
-func parseLine(line string) *MetadataAccumulator {
-	if strings.Contains(line, "drop event occured") {
-		return &MetadataAccumulator{
-			Cmd: "drop event occured\n",
-		}
-	}
-	lineParts := strings.Split(line, "]::[")
-	if len(lineParts) != 8 {
-		logger.Print(logger.ERROR, false, "we have got unknown line format, line is %s\n\n", line)
-		return nil
-	}
-	Timestamp, err := convertStrigTimeToTimeOBJ(lineParts[0])
-	if err != nil {
-		logger.Print(logger.ERROR, false, "parseLine Timestamp fail line is %s, err %v\n\n", line, err)
-		return nil
-	}
-	return &MetadataAccumulator{
-		Timestamp:       *Timestamp,
-		ContainerID:     lineParts[1],
-		SyscallCategory: lineParts[2],
-		Ppid:            lineParts[3],
-		Pid:             lineParts[4],
-		SyscallType:     lineParts[5],
-		Exe:             lineParts[6],
-		Cmd:             lineParts[7],
-	}
-}
-
-// func (acc *CacheAccumulator) findIndexByTimestampWhenAccumultorDataIsFullBranchDecision(eventTime time.Time, storeTime time.Time) bool {
-// 	timeDifferance := eventTime.Sub(storeTime)
-// 	// logger.Print(logger.DEBUG, false, "timeDifferance %v time.Duration(acc.CacheAccumulatorSize) %v\n", timeDifferance, time.Second*time.Duration(acc.CacheAccumulatorSize))
-// 	return timeDifferance > time.Second*time.Duration(acc.CacheAccumulatorSize-1) && timeDifferance < time.Second*time.Duration(acc.CacheAccumulatorSize+1)
-// }
-
-func (acc *CacheAccumulator) findIndexByTimestampWhenAccumultorDataIsFull(t time.Time) (int, bool) {
+func (acc *CacheAccumulator) findIndexByTimestampWhenAccumultorDataIsFull(event *accumulator_data_structure.MetadataAccumulator) int {
 	index := 0
 	minTimestamp := acc.accumultorData[0][acc.firstMapKeysOfAccumultorData[0]][0].Timestamp
 	for i := range acc.accumultorData {
@@ -169,104 +81,108 @@ func (acc *CacheAccumulator) findIndexByTimestampWhenAccumultorDataIsFull(t time
 			index = i
 		}
 	}
-	return index, true
+	acc.createNewMap(event, index)
+	return index
 }
 
-func (acc *CacheAccumulator) findIndexByTimestamp(t time.Time) (int, bool) {
+func (acc *CacheAccumulator) findIndexByTimestamp(event *accumulator_data_structure.MetadataAccumulator) int {
 	for i := range acc.accumultorData {
 		if len(acc.accumultorData[i]) == 0 {
-			return i, true
+			acc.createNewMap(event, i)
+			return i
 		}
 		firstKey := acc.firstMapKeysOfAccumultorData[i]
-		if t.Sub((acc.accumultorData[i])[firstKey][0].Timestamp) < time.Second {
-			return i, false
+		if event.Timestamp.Sub((acc.accumultorData[i])[firstKey][0].Timestamp) < time.Second {
+			return i
 		}
 	}
-	index, createNewMap := acc.findIndexByTimestampWhenAccumultorDataIsFull(t)
+	index := acc.findIndexByTimestampWhenAccumultorDataIsFull(event)
 	if index != -1 {
-		return index, createNewMap
+		return index
 	}
-	// logger.Print(logger.DEBUG, false, "findIndexByTimestamp: failed to find index, sniffer data will not saved\n")
-	return -1, false
+	return -1
 }
 
-func (acc *CacheAccumulator) accmulateOneLine(line string) {
-	if strings.Contains(line, "::["+config.GetMyContainerID()+"]::") {
-		return
+func (acc *CacheAccumulator) removeAllStreamedContainers(event *accumulator_data_structure.MetadataAccumulator) {
+	if acc.containersData.unregisterContainerState || acc.containersData.registerContainerState {
+		acc.containersData.registerMutex.Lock()
 	}
-	metadataAcc := parseLine(line)
-	if metadataAcc != nil {
-		if metadataAcc.Cmd == "drop event occured\n" {
-			if acc.containersData.unregisterContainerState || acc.containersData.registerContainerState {
-				acc.containersData.registerMutex.Lock()
-			}
-			if len(acc.containersData.accumultorDataPerContainer) > 0 {
-				for contID := range acc.containersData.accumultorDataPerContainer {
-					acc.containersData.accumultorDataPerContainer[contID] <- *metadataAcc
-				}
-			}
-			if acc.containersData.unregisterContainerState || acc.containersData.registerContainerState {
-				acc.containersData.registerMutex.Unlock()
-			}
-		} else {
-			index, createNewMap := acc.findIndexByTimestamp(metadataAcc.Timestamp)
-			if index == -1 {
-				// logger.Print(logger.DEBUG, false, "metadataAcc %v\n", metadataAcc)
-				return
-			}
-			acc.syncReaderWriterAccumulatorData.Lock()
-			if createNewMap {
-				slice := make([]MetadataAccumulator, 0)
-				m := make(map[string][]MetadataAccumulator)
-				m[metadataAcc.ContainerID] = slice
-				acc.accumultorData[index] = m
-				acc.firstMapKeysOfAccumultorData[index] = metadataAcc.ContainerID
-			}
-			a := acc.accumultorData[index]
-			a[metadataAcc.ContainerID] = append(a[metadataAcc.ContainerID], *metadataAcc)
-			acc.accumultorData[index][metadataAcc.ContainerID] = append(acc.accumultorData[index][metadataAcc.ContainerID], *metadataAcc)
-			acc.syncReaderWriterAccumulatorData.Unlock()
-
-			if acc.containersData.unregisterContainerState || acc.containersData.registerContainerState {
-				acc.containersData.registerMutex.Lock()
-			}
-			if containerAccumalatorChan, exist := acc.containersData.accumultorDataPerContainer[metadataAcc.ContainerID]; exist {
-				containerAccumalatorChan <- *metadataAcc
-			}
-			if acc.containersData.unregisterContainerState || acc.containersData.registerContainerState {
-				acc.containersData.registerMutex.Unlock()
-			}
+	if len(acc.containersData.accumultorDataPerContainer) > 0 {
+		for contID := range acc.containersData.accumultorDataPerContainer {
+			acc.containersData.accumultorDataPerContainer[contID] <- *event
 		}
 	}
+	if acc.containersData.unregisterContainerState || acc.containersData.registerContainerState {
+		acc.containersData.registerMutex.Unlock()
+	}
 }
 
-func (acc *CacheAccumulator) accumulateSnifferData(stdout io.ReadCloser) {
+func (acc *CacheAccumulator) addEventToCacheAccumalator(event *accumulator_data_structure.MetadataAccumulator, index int) {
+	acc.syncReaderWriterAccumulatorData.Lock()
+	a := acc.accumultorData[index]
+	a[event.ContainerID] = append(a[event.ContainerID], *event)
+	acc.accumultorData[index][event.ContainerID] = append(acc.accumultorData[index][event.ContainerID], *event)
+	acc.syncReaderWriterAccumulatorData.Unlock()
+}
+
+func (acc *CacheAccumulator) streamEventToListeningContainer(event *accumulator_data_structure.MetadataAccumulator, index int) {
+	if acc.containersData.unregisterContainerState || acc.containersData.registerContainerState {
+		acc.containersData.registerMutex.Lock()
+	}
+	if containerAccumalatorChan, exist := acc.containersData.accumultorDataPerContainer[event.ContainerID]; exist {
+		containerAccumalatorChan <- *event
+	}
+	if acc.containersData.unregisterContainerState || acc.containersData.registerContainerState {
+		acc.containersData.registerMutex.Unlock()
+	}
+}
+
+func (acc *CacheAccumulator) accumulateEbpfEngineData() {
 	for {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			fullLine := scanner.Text()
-			// logger.Print(logger.INFO, false, "line %s\n", fullLine)
-			if fullLine != "" {
-				acc.accmulateOneLine(fullLine)
+		event := <-acc.mainDataChannel
+		if strings.Contains(event.ContainerID, config.GetMyContainerID()) {
+			continue
+		}
+		if event != nil {
+			if event.Cmd == "drop event occured\n" {
+				acc.removeAllStreamedContainers(event)
+			} else {
+				index := acc.findIndexByTimestamp(event)
+				if index == -1 {
+					continue
+				}
+				acc.addEventToCacheAccumalator(event, index)
+				acc.streamEventToListeningContainer(event, index)
 			}
 		}
-		logger.Print(logger.DEBUG, false, "CacheAccumulator accumulateSnifferData scanner.Err(): %v\n", scanner.Err())
 	}
 }
 
-func waitToProcessErrCode(cmd *exec.Cmd, errChan chan error) {
-	errChan <- cmd.Wait()
+func (acc *CacheAccumulator) getEbpfEngineData() {
+	acc.ebpfEngine.GetEbpfEngineData(acc.mainDataChannel)
+}
+
+func (acc *CacheAccumulator) getEbpfEngineError(errChan chan error) {
+	errChan <- acc.ebpfEngine.GetEbpfEngineError()
 }
 
 func (acc *CacheAccumulator) StartCacheAccumalator(errChan chan error, syscallFilter []string, includeHost bool, sniffMainThreadOnly bool) error {
-	sniffer := sniffer_engine.CreateSnifferEngine(syscallFilter, includeHost, sniffMainThreadOnly, "")
-	stdout, _, err, cmd := sniffer.StartSnifferEngine()
+	if config.IsFalcoEbpfEngine() {
+		falcoEbpfEngine := ebpf_engine.CreateFalcoEbpfEngine(syscallFilter, includeHost, sniffMainThreadOnly, "")
+		acc.ebpfEngine = falcoEbpfEngine
+	} else {
+		ciliumEbpfEngine := ebpf_engine.CreateCiliumEbpfEngine()
+		acc.ebpfEngine = ciliumEbpfEngine
+	}
+	err := acc.ebpfEngine.StartEbpfEngine()
 	if err != nil {
-		logger.Print(logger.ERROR, false, "fail to create sniffer agent process\n")
+		logger.Print(logger.ERROR, false, "fail to create ebpf engine")
 		return err
 	}
-	go acc.accumulateSnifferData(stdout)
-	go waitToProcessErrCode(cmd, errChan)
+
+	go acc.accumulateEbpfEngineData()
+	go acc.getEbpfEngineData()
+	go acc.getEbpfEngineError(errChan)
 	return nil
 }
 
@@ -298,9 +214,9 @@ func GetCacheAccumaltor() *CacheAccumulator {
 	return cacheAccumuator
 }
 
-func (acc *CacheAccumulator) AccumulatorByContainerID(aggregationData *[]MetadataAccumulator, containerID string, containerStartTime interface{}) {
+func (acc *CacheAccumulator) AccumulatorByContainerID(aggregationData *[]accumulator_data_structure.MetadataAccumulator, containerID string, containerStartTime interface{}) {
 	for i := range acc.accumultorData {
-		logger.Print(logger.DEBUG, false, "%d:%v\n", i, acc.accumultorData[i])
+		logger.Print(logger.DEBUG, false, "index %d:%v", i, acc.accumultorData[i])
 	}
 	for i := range acc.accumultorData {
 		for j := range acc.accumultorData[i][containerID] {
@@ -309,5 +225,5 @@ func (acc *CacheAccumulator) AccumulatorByContainerID(aggregationData *[]Metadat
 			acc.syncReaderWriterAccumulatorData.Unlock()
 		}
 	}
-	logger.Print(logger.DEBUG, false, "data %v\n", aggregationData)
+	logger.Print(logger.DEBUG, false, "%v", aggregationData)
 }

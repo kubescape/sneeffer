@@ -7,8 +7,10 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/kubescape/sneeffer/internal/config"
 	"github.com/kubescape/sneeffer/internal/logger"
+
+	"github.com/kubescape/sneeffer/internal/config"
+
 	"github.com/kubescape/sneeffer/sneeffer/container_profiling"
 	global_data "github.com/kubescape/sneeffer/sneeffer/global_data/k8s"
 	"github.com/kubescape/sneeffer/sneeffer/network_policy"

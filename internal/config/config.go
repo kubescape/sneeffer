@@ -16,6 +16,11 @@ const (
 	MONITOR_NETWORK_SERVICE     = "MONITOR_NETWORK_SERVICE"
 )
 
+const (
+	EBPF_ENGINE_FALCO  = "falco"
+	EBPF_ENGINE_CILIUM = "cilium"
+)
+
 var myContainerID string
 
 var sycscallFilterForRelaventCVES []string
@@ -27,6 +32,7 @@ var innerDirectoriesPath []string
 
 var relaventCVEService bool
 var containerProfilingService bool
+var ebpfEngine string
 var monitorNetworkingService bool
 
 func init() {
@@ -44,6 +50,7 @@ func init() {
 	sycscallFilterForNetworkMonitoring = append(sycscallFilterForNetworkMonitoring, []string{"connect", "accept"}...)
 	containerProfilingService = false
 	relaventCVEService = false
+	myContainerID = "111111111111111111"
 	monitorNetworkingService = false
 }
 
@@ -106,6 +113,19 @@ func loggerConfig() {
 	logger.ConfigLogger(verbose, "")
 }
 
+func ebpfEngineConfig() bool {
+	val, exist := os.LookupEnv("ebpfEngine")
+	if exist {
+		if val != EBPF_ENGINE_FALCO && val != EBPF_ENGINE_CILIUM {
+			return false
+		}
+		ebpfEngine = val
+	} else {
+		ebpfEngine = EBPF_ENGINE_FALCO
+	}
+	return true
+}
+
 func servicesConfig() error {
 	serviceExist := false
 
@@ -144,6 +164,7 @@ func afterConfigurationParserActions() error {
 	if err != nil {
 		return err
 	}
+	ebpfEngineConfig()
 	loggerConfig()
 	return servicesConfig()
 }
@@ -191,6 +212,10 @@ func IsRelaventCVEServiceEnabled() bool {
 
 func IsContainerProfilingServiceEnabled() bool {
 	return containerProfilingService
+}
+
+func IsFalcoEbpfEngine() bool {
+	return ebpfEngine == EBPF_ENGINE_FALCO
 }
 
 func IsMonitorNetworkingServiceEnabled() bool {

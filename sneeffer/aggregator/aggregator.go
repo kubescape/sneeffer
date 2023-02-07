@@ -5,8 +5,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/kubescape/sneeffer/internal/config"
 	"github.com/kubescape/sneeffer/internal/logger"
+
+	"github.com/kubescape/sneeffer/sneeffer/accumulator_data_structure"
+
+	"github.com/kubescape/sneeffer/internal/config"
+
 	"github.com/kubescape/sneeffer/sneeffer/accumulator"
 	"github.com/kubescape/sneeffer/sneeffer/utils"
 )
@@ -32,8 +36,8 @@ func init() {
 type Aggregator struct {
 	containerID         string
 	stopAggregate       bool
-	aggregationData     []accumulator.MetadataAccumulator
-	aggregationDataChan chan accumulator.MetadataAccumulator
+	aggregationData     []accumulator_data_structure.MetadataAccumulator
+	aggregationDataChan chan accumulator_data_structure.MetadataAccumulator
 	ppid_to_pid         map[string][]string
 	containerAccumuator *accumulator.ContainerAccumulator
 	cacheAccumuator     *accumulator.CacheAccumulator
@@ -44,8 +48,8 @@ func CreateAggregator(containerID string, containerStartTime interface{}) *Aggre
 	return &Aggregator{
 		containerID:         containerID,
 		stopAggregate:       false,
-		aggregationData:     make([]accumulator.MetadataAccumulator, 0),
-		aggregationDataChan: make(chan accumulator.MetadataAccumulator),
+		aggregationData:     make([]accumulator_data_structure.MetadataAccumulator, 0),
+		aggregationDataChan: make(chan accumulator_data_structure.MetadataAccumulator),
 		ppid_to_pid:         make(map[string][]string),
 		containerAccumuator: nil,
 		cacheAccumuator:     accumulator.GetCacheAccumaltor(),
@@ -82,26 +86,30 @@ func (aggregator *Aggregator) StopAggregate() error {
 	return nil
 }
 
-func parseFileName(snifferData accumulator.MetadataAccumulator) string {
+func parseFileName(snifferData accumulator_data_structure.MetadataAccumulator) string {
 	fileName := ""
-	switch snifferData.SyscallCategory {
-	case "CAT=PROCESS":
-		if strings.HasPrefix(snifferData.SyscallType, "TYPE=execve(") {
-			fileName = utils.Between(snifferData.SyscallType, "filename: ", ")")
-		} else if strings.HasPrefix(snifferData.SyscallType, "TYPE=execve(") {
-			fileName = utils.Between(snifferData.SyscallType, "dirfd: <f>", ", pathname:")
+	if config.IsFalcoEbpfEngine() {
+		switch snifferData.SyscallCategory {
+		case "CAT=PROCESS":
+			if strings.HasPrefix(snifferData.SyscallType, "TYPE=execve(") {
+				fileName = utils.Between(snifferData.SyscallType, "filename: ", ")")
+			} else if strings.HasPrefix(snifferData.SyscallType, "TYPE=execve(") {
+				fileName = utils.Between(snifferData.SyscallType, "dirfd: <f>", ", pathname:")
+			}
+		case "CAT=FILE":
+			if strings.HasPrefix(snifferData.SyscallType, "TYPE=openat(") {
+				fileName = utils.Between(snifferData.SyscallType, "name: ", ", flags")
+			} else if strings.HasPrefix(snifferData.SyscallType, "TYPE=open(") {
+				fileName = utils.Between(snifferData.SyscallType, "name: ", ", flags")
+			}
 		}
-	case "CAT=FILE":
-		if strings.HasPrefix(snifferData.SyscallType, "TYPE=openat(") {
-			fileName = utils.Between(snifferData.SyscallType, "name: ", ", flags")
-		} else if strings.HasPrefix(snifferData.SyscallType, "TYPE=open(") {
-			fileName = utils.Between(snifferData.SyscallType, "name: ", ", flags")
-		}
+	} else {
+		fileName = snifferData.SyscallType
 	}
 	return fileName
 }
 
-func parseSyscallName(snifferData accumulator.MetadataAccumulator) string {
+func parseSyscallName(snifferData accumulator_data_structure.MetadataAccumulator) string {
 	if snifferData.SyscallCategory == "CAT=SCHEDULER" {
 		return ""
 	}
@@ -173,7 +181,7 @@ func (aggregator *Aggregator) GetContainerRealtimeSyscalls() []string {
 	return snifferRealtimeSyscallList
 }
 
-func parsePeerToPeerIPs(snifferData accumulator.MetadataAccumulator, syscallName string) string {
+func parsePeerToPeerIPs(snifferData accumulator_data_structure.MetadataAccumulator, syscallName string) string {
 	var clientIP string
 	var serverIP string
 	var port string
