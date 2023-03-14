@@ -121,6 +121,10 @@ spec:
       medium: 2
       negligible: 4
 ```
+in order to get more detailed results(list of relevant and irrelevant vulnerabilities):
+```
+kubectl get rvd -w
+```
 
 ### Limitations
 1. Sneeffer only creates vulnerability results for PODs it saw starting.  
