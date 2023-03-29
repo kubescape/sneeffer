@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	RELAVENT_CVES_SERVICE       = "RELAVENT_CVES_SERVICE"
+	RELEVANT_CVES_SERVICE       = "RELEVANT_CVES_SERVICE"
 	CONTAINER_PROFILING_SERVICE = "CONTAINER_PROFILING_SERVICE"
 	MONITOR_NETWORK_SERVICE     = "MONITOR_NETWORK_SERVICE"
 )
@@ -30,7 +30,7 @@ var sycscallFilterForNetworkMonitoring []string
 var manadatoryConfigurationVars []string
 var innerDirectoriesPath []string
 
-var relaventCVEService bool
+var relevantCVEService bool
 var containerProfilingService bool
 var ebpfEngine string
 var monitorNetworkingService bool
@@ -49,7 +49,7 @@ func init() {
 	sycscallFilterForRelaventCVES = append(sycscallFilterForRelaventCVES, []string{"execve", "execveat", "open", "openat"}...)
 	sycscallFilterForNetworkMonitoring = append(sycscallFilterForNetworkMonitoring, []string{"connect", "accept"}...)
 	containerProfilingService = false
-	relaventCVEService = false
+	relevantCVEService = false
 	myContainerID = "111111111111111111"
 	monitorNetworkingService = false
 }
@@ -132,9 +132,9 @@ func servicesConfig() error {
 	val, exist := os.LookupEnv("enableRelaventCVEsService")
 	if exist {
 		if val == "true" || val == "True" {
-			relaventCVEService = true
+			relevantCVEService = true
 			serviceExist = true
-			logger.Print(logger.INFO, false, "sneeffer service find relavent CVEs is enabled\n")
+			logger.Print(logger.INFO, false, "sneeffer service find relevant CVEs is enabled\n")
 		}
 	}
 	val, exist = os.LookupEnv("enableContainerProfilingService")
@@ -207,7 +207,7 @@ func GetSyscallFilter() []string {
 }
 
 func IsRelaventCVEServiceEnabled() bool {
-	return relaventCVEService
+	return relevantCVEService
 }
 
 func IsContainerProfilingServiceEnabled() bool {

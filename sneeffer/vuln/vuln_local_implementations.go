@@ -56,8 +56,8 @@ type VulnCVEs struct {
 type VulnDetailed struct {
 	ImageName       string     `json:"imageName"`
 	K8sAncestorName string     `json:"ancestorName,omitempty"`
-	RelaventCVEs    []VulnCVEs `json:"relaventCVEs"`
-	IrrelaventCVEs  []VulnCVEs `json:"irrelaventCVEs"`
+	RelaventCVEs    []VulnCVEs `json:"relevantCVEs"`
+	IrrelevantCVEs  []VulnCVEs `json:"irrelevantCVEs"`
 }
 
 type ProccesedVulnData struct {
@@ -303,17 +303,17 @@ func contains(needle string, haystack []VulnCVEs) bool {
 }
 
 func (vuln *VulnObject) convertToFinalDataStructures(vulnUnfilteredData, vulnFilteredData *models.Document) error {
-	proccesedVulnData := ProccesedVulnData{}
-	relventBySeverity := map[string]int{
+	processedVulnData := ProccesedVulnData{}
+	relevantBySeverity := map[string]int{
 		"Critical":   0,
 		"High":       0,
 		"Medium":     0,
 		"Low":        0,
 		"Negligible": 0,
 	}
-	relaventIdx := 0
+	relevantIdx := 0
 
-	irrelventBySeverity := map[string]int{
+	irrelevantBySeverity := map[string]int{
 		"Critical":   0,
 		"High":       0,
 		"Medium":     0,
@@ -322,42 +322,42 @@ func (vuln *VulnObject) convertToFinalDataStructures(vulnUnfilteredData, vulnFil
 	}
 	allCVEsIdx := 0
 
-	proccesedVulnData.DataDetailed.ImageName = vuln.imageID
-	proccesedVulnData.DataDetailed.K8sAncestorName = ""
-	proccesedVulnData.DataSummary.ImageName = vuln.imageID
-	proccesedVulnData.DataSummary.K8sAncestorName = ""
+	processedVulnData.DataDetailed.ImageName = vuln.imageID
+	processedVulnData.DataDetailed.K8sAncestorName = ""
+	processedVulnData.DataSummary.ImageName = vuln.imageID
+	processedVulnData.DataSummary.K8sAncestorName = ""
 	for i := range vulnFilteredData.Matches {
 		CVEName := vulnFilteredData.Matches[i].Vulnerability.VulnerabilityMetadata.ID
 		CVESeverity := vulnFilteredData.Matches[i].Vulnerability.VulnerabilityMetadata.Severity
-		relventBySeverity[CVESeverity] = relventBySeverity[CVESeverity] + 1
-		proccesedVulnData.DataDetailed.RelaventCVEs = append(proccesedVulnData.DataDetailed.RelaventCVEs, VulnCVEs{CVEName: CVEName, CVESeverity: CVESeverity})
-		relaventIdx++
+		relevantBySeverity[CVESeverity] = relevantBySeverity[CVESeverity] + 1
+		processedVulnData.DataDetailed.RelaventCVEs = append(processedVulnData.DataDetailed.RelaventCVEs, VulnCVEs{CVEName: CVEName, CVESeverity: CVESeverity})
+		relevantIdx++
 	}
 	for i := range vulnUnfilteredData.Matches {
 		CVEName := vulnUnfilteredData.Matches[i].Vulnerability.VulnerabilityMetadata.ID
 		CVESeverity := vulnUnfilteredData.Matches[i].Vulnerability.VulnerabilityMetadata.Severity
-		if !contains(vulnUnfilteredData.Matches[i].Vulnerability.VulnerabilityMetadata.ID, proccesedVulnData.DataDetailed.IrrelaventCVEs) {
-			proccesedVulnData.DataDetailed.IrrelaventCVEs = append(proccesedVulnData.DataDetailed.IrrelaventCVEs, VulnCVEs{CVEName: CVEName, CVESeverity: CVESeverity})
+		if !contains(vulnUnfilteredData.Matches[i].Vulnerability.VulnerabilityMetadata.ID, processedVulnData.DataDetailed.IrrelevantCVEs) {
+			processedVulnData.DataDetailed.IrrelevantCVEs = append(processedVulnData.DataDetailed.IrrelevantCVEs, VulnCVEs{CVEName: CVEName, CVESeverity: CVESeverity})
 		}
-		irrelventBySeverity[CVESeverity] = irrelventBySeverity[CVESeverity] + 1
+		irrelevantBySeverity[CVESeverity] = irrelevantBySeverity[CVESeverity] + 1
 		allCVEsIdx++
 	}
-	proccesedVulnData.DataSummary.VulnSummaryData.ImageCVEsNumber.Critical = irrelventBySeverity["Critical"]
-	proccesedVulnData.DataSummary.VulnSummaryData.ImageCVEsNumber.High = irrelventBySeverity["High"]
-	proccesedVulnData.DataSummary.VulnSummaryData.ImageCVEsNumber.Medium = irrelventBySeverity["Medium"]
-	proccesedVulnData.DataSummary.VulnSummaryData.ImageCVEsNumber.Low = irrelventBySeverity["Low"]
-	proccesedVulnData.DataSummary.VulnSummaryData.ImageCVEsNumber.Negligible = irrelventBySeverity["Negligible"]
-	proccesedVulnData.DataSummary.VulnSummaryData.ImageCVEsNumber.All = allCVEsIdx
+	processedVulnData.DataSummary.VulnSummaryData.ImageCVEsNumber.Critical = irrelevantBySeverity["Critical"]
+	processedVulnData.DataSummary.VulnSummaryData.ImageCVEsNumber.High = irrelevantBySeverity["High"]
+	processedVulnData.DataSummary.VulnSummaryData.ImageCVEsNumber.Medium = irrelevantBySeverity["Medium"]
+	processedVulnData.DataSummary.VulnSummaryData.ImageCVEsNumber.Low = irrelevantBySeverity["Low"]
+	processedVulnData.DataSummary.VulnSummaryData.ImageCVEsNumber.Negligible = irrelevantBySeverity["Negligible"]
+	processedVulnData.DataSummary.VulnSummaryData.ImageCVEsNumber.All = allCVEsIdx
 
-	proccesedVulnData.DataSummary.VulnSummaryData.RuntimeCVEsNumber.Critical = relventBySeverity["Critical"]
-	proccesedVulnData.DataSummary.VulnSummaryData.RuntimeCVEsNumber.High = relventBySeverity["High"]
-	proccesedVulnData.DataSummary.VulnSummaryData.RuntimeCVEsNumber.Medium = relventBySeverity["Medium"]
-	proccesedVulnData.DataSummary.VulnSummaryData.RuntimeCVEsNumber.Low = relventBySeverity["Low"]
-	proccesedVulnData.DataSummary.VulnSummaryData.RuntimeCVEsNumber.Negligible = relventBySeverity["Negligible"]
-	proccesedVulnData.DataSummary.VulnSummaryData.RuntimeCVEsNumber.All = relaventIdx
-	proccesedVulnData.DataSummary.VulnSummaryData.Description = "Wow!! there are only " + strconv.Itoa(relaventIdx) + " relavent vulnerebilities out of " + strconv.Itoa(allCVEsIdx) + " in this image"
+	processedVulnData.DataSummary.VulnSummaryData.RuntimeCVEsNumber.Critical = relevantBySeverity["Critical"]
+	processedVulnData.DataSummary.VulnSummaryData.RuntimeCVEsNumber.High = relevantBySeverity["High"]
+	processedVulnData.DataSummary.VulnSummaryData.RuntimeCVEsNumber.Medium = relevantBySeverity["Medium"]
+	processedVulnData.DataSummary.VulnSummaryData.RuntimeCVEsNumber.Low = relevantBySeverity["Low"]
+	processedVulnData.DataSummary.VulnSummaryData.RuntimeCVEsNumber.Negligible = relevantBySeverity["Negligible"]
+	processedVulnData.DataSummary.VulnSummaryData.RuntimeCVEsNumber.All = relevantIdx
+	processedVulnData.DataSummary.VulnSummaryData.Description = strconv.Itoa(relevantIdx) + " relevant vulnerabilities detected out of " + strconv.Itoa(allCVEsIdx) + " total in this image"
 
-	vuln.parsedVulnData = &proccesedVulnData
+	vuln.parsedVulnData = &processedVulnData
 	return nil
 }
 

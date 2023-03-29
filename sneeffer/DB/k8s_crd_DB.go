@@ -332,7 +332,7 @@ func SetDataInDB(vulnData *vuln.ProccesedVulnData, containerProfilingData *conta
 	resourceName = strings.ReplaceAll(resourceName, ":", ".tag-")
 	resourceName = utils.ReplaceChars(resourceName, allowedCharsForK8sResourceName, "-")
 
-	if config.IsRelaventCVEServiceEnabled() && service == config.RELAVENT_CVES_SERVICE {
+	if config.IsRelaventCVEServiceEnabled() && service == config.RELEVANT_CVES_SERVICE {
 		CRSummaryClient, err := newCRClient(summaryType)
 		if err != nil {
 			return err

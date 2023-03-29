@@ -180,7 +180,7 @@ func (sbom *SbomObject) FilterSbom(realTimeFileList []string) error {
 	}
 	logger.Print(logger.DEBUG, false, "fileIDsList size: %d\n", len(fileIDsList))
 
-	//remove irrelavent files by file ids
+	//remove irrelevant files by file ids
 	for i, rcount, rlen := 0, 0, len(model.Files); i < rlen; i++ {
 		j := i - rcount
 		if !contains(model.Files[j].ID, fileIDsList) {
@@ -189,7 +189,7 @@ func (sbom *SbomObject) FilterSbom(realTimeFileList []string) error {
 		}
 	}
 
-	//remove irrelavent files by file ids
+	//remove irrelevant files by file ids
 	for i, rcount, rlen := 0, 0, len(model.ArtifactRelationships); i < rlen; i++ {
 		j := i - rcount
 		if !contains(model.ArtifactRelationships[j].Child, fileIDsList) {
@@ -199,14 +199,14 @@ func (sbom *SbomObject) FilterSbom(realTimeFileList []string) error {
 	}
 	logger.Print(logger.DEBUG, false, "model.ArtifactRelationships size: %d\n", len(model.ArtifactRelationships))
 
-	//create relavent packageIDs list
+	//create relevant packageIDs list
 	var packageIDs []string
 	for i := range model.ArtifactRelationships {
 		packageIDs = append(packageIDs, model.ArtifactRelationships[i].Parent)
 	}
 	logger.Print(logger.DEBUG, false, "packageIDs size: %v\n", len(packageIDs))
 
-	//remove irrelavent packages by file packageID
+	//remove irrelevant packages by file packageID
 	for i, rcount, rlen := 0, 0, len(model.Artifacts); i < rlen; i++ {
 		j := i - rcount
 		if !contains(model.Artifacts[j].ID, packageIDs) {

@@ -25,7 +25,7 @@ spec:
                   type: string
                 ancestorName:
                   type: string
-                relaventCVEs:
+                relevantCVEs:
                   type: array
                   items:
                     type: object
@@ -34,7 +34,7 @@ spec:
                         type: string
                       cVESeverity:
                         type: string
-                irrelaventCVEs:
+                irrelevantCVEs:
                   type: array
                   items:
                     type: object

@@ -27,7 +27,7 @@
     vulnCreatorPath=./resources/vuln/grype
     snifferTime=1
     loggerVerbose=INFO
-    crdFullDetailedPath=./resources/k8s/crd-vuln-full-detailes.yaml
+    crdFullDetailedPath=./resources/k8s/crd-vuln-full-details.yaml
     crdVulnSummaryPath=./resources/k8s/crd-vuln-summary.yaml
     myNode=minikube
     enableContainerProfilingService=true

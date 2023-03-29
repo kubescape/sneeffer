@@ -46,7 +46,7 @@ type k8sTripeletIdentity struct {
 	imageName       string
 }
 
-type relaventCVEsDataStructure struct {
+type relevantCVEsDataStructure struct {
 	sbomObject *sbom.SbomObject
 	vulnObject *vuln.VulnObject
 }
@@ -54,7 +54,7 @@ type relaventCVEsDataStructure struct {
 type watchedContainer struct {
 	containerAggregator       *aggregator.Aggregator
 	containerAggregatorStatus bool
-	relaventCVEsData          *relaventCVEsDataStructure
+	relevantCVEsData          *relevantCVEsDataStructure
 	imageID                   string
 	podName                   string
 	snifferTimer              *time.Timer
@@ -267,13 +267,13 @@ func (containerWatcher *ContainerWatcher) afterTimerActions() error {
 		containerData := containerWatcher.watchedContainers[afterTimerActionsData.containerID]
 		resourceName := getK8SResourceName(containerData)
 
-		if config.IsRelaventCVEServiceEnabled() && afterTimerActionsData.service == config.RELAVENT_CVES_SERVICE {
+		if config.IsRelaventCVEServiceEnabled() && afterTimerActionsData.service == config.RELEVANT_CVES_SERVICE {
 			fileList := containerData.containerAggregator.GetContainerRealtimeFileList()
 			if err = <-containerData.syncChannel[STEP_GET_SBOM]; err != nil {
 				logger.Print(logger.ERROR, false, "afterTimerActions: failed to get sbom with err %v\n", err)
 				continue
 			}
-			err = containerData.relaventCVEsData.sbomObject.FilterSbom(fileList)
+			err = containerData.relevantCVEsData.sbomObject.FilterSbom(fileList)
 			if err != nil {
 				logger.Print(logger.ERROR, false, "afterTimerActions: failed to filter sbom with err %v\n", err)
 				continue
@@ -283,12 +283,12 @@ func (containerWatcher *ContainerWatcher) afterTimerActions() error {
 				logger.Print(logger.ERROR, false, "afterTimerActions: failed to get unfilter vulns with err %v\n", err)
 				continue
 			}
-			err = containerData.relaventCVEsData.vulnObject.GetFilterVulnerabilities()
+			err = containerData.relevantCVEsData.vulnObject.GetFilterVulnerabilities()
 			if err != nil {
 				logger.Print(logger.ERROR, false, "afterTimerActions: failed to get filter vulns with err %v\n", err)
 				continue
 			}
-			err = DB.SetDataInDB(containerData.relaventCVEsData.vulnObject.GetProcessedData(), nil, nil, resourceName, afterTimerActionsData.service)
+			err = DB.SetDataInDB(containerData.relevantCVEsData.vulnObject.GetProcessedData(), nil, nil, resourceName, afterTimerActionsData.service)
 			if err != nil {
 				logger.Print(logger.ERROR, false, "afterTimerActions: failed to set data in the DB with err %v\n", err)
 				continue
@@ -360,7 +360,7 @@ func (containerWatcher *ContainerWatcher) startTimer(containerID string) {
 		if config.IsRelaventCVEServiceEnabled() {
 			containerWatcher.afterTimerActionsChannel <- afterTimerActionsData{
 				containerID: containerID,
-				service:     config.RELAVENT_CVES_SERVICE,
+				service:     config.RELEVANT_CVES_SERVICE,
 			}
 		}
 		if config.IsMonitorNetworkingServiceEnabled() {
@@ -382,10 +382,10 @@ func (containerWatcher *ContainerWatcher) StartFindRelaventCVEsPrerequisites(con
 	containerData := containerWatcher.watchedContainers[containerID]
 
 	/*phase 1: create sbom to image */
-	go containerData.relaventCVEsData.sbomObject.CreateSbomUnfilter(containerData.syncChannel[STEP_GET_SBOM])
+	go containerData.relevantCVEsData.sbomObject.CreateSbomUnfilter(containerData.syncChannel[STEP_GET_SBOM])
 
 	/*phase 2: create sbom to image */
-	go containerData.relaventCVEsData.vulnObject.GetImageVulnerabilities(containerData.syncChannel[STEP_GET_UNFILTER_VULNS])
+	go containerData.relevantCVEsData.vulnObject.GetImageVulnerabilities(containerData.syncChannel[STEP_GET_UNFILTER_VULNS])
 }
 
 func (containerWatcher *ContainerWatcher) StartContainerProfilingPrerequisites(containerID string) {
@@ -602,12 +602,12 @@ func (containerWatcher *ContainerWatcher) createWatchedContainerObject(pod *core
 
 	if config.IsRelaventCVEServiceEnabled() {
 		credentialslist := getImageCredentialslist(pod, pod.Status.ContainerStatuses[containerIndex].Image)
-		relaventCVEsData := &relaventCVEsDataStructure{}
+		relevantCVEsData := &relevantCVEsDataStructure{}
 		sbomObject := sbom.CreateSbomObject(credentialslist, getImageID(pod.Status.ContainerStatuses[containerIndex].ImageID))
 		vulnObject := vuln.CreateVulnObject(credentialslist, getImageID(pod.Status.ContainerStatuses[containerIndex].ImageID), sbomObject)
-		relaventCVEsData.sbomObject = sbomObject
-		relaventCVEsData.vulnObject = vulnObject
-		newWatchedContainer.relaventCVEsData = relaventCVEsData
+		relevantCVEsData.sbomObject = sbomObject
+		relevantCVEsData.vulnObject = vulnObject
+		newWatchedContainer.relevantCVEsData = relevantCVEsData
 
 	}
 	if config.IsContainerProfilingServiceEnabled() {
@@ -688,7 +688,7 @@ func (containerWatcher *ContainerWatcher) StartWatchingOnNewContainers() error {
 				containerWatcher.handleDeletePod(pod)
 				// 	for i := range pod.Status.ContainerStatuses {
 				// 		if pod.Status.ContainerStatuses[i].State.Terminated != nil && containerWatcher.isContainerWatched(pod.Status.ContainerStatuses[i].State.Terminated.ContainerID) {
-				// 			//before stop watching create relavent sbom
+				// 			//before stop watching create relevant sbom
 				// 			if containerWatcher.watchedContainers[pod.Status.ContainerStatuses[i].ContainerID] != nil {
 				// 				containerWatcher.watchedContainers[pod.Status.ContainerStatuses[i].ContainerID].snifferTimer.Stop()
 				// 				containerWatcher.afterTimerActions(pod.Status.ContainerStatuses[i].ContainerID, getK8SResourceName(containerWatcher.watchedContainers[pod.Status.ContainerStatuses[i].ContainerID]))

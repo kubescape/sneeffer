@@ -1,8 +1,8 @@
-# TL; DR
+# Sneeffer
 
 Sneeffer is a magic tool that makes some of your vulnerabilities disappear 🪄 😎
 
-This tool is a results of a POC project. It calculates image vulnerabilities based on (Syft and Grype) in a Kubernetes cluster with an eBPF (Falco) twist! It monitors PODs from their start till a limited time to view their file activity and discover which software packages are used in runtime and which are not. Based of this it can remove the packages from vulnerability report that not used therefore cannot be exploited!
+It calculates image vulnerabilities based on (Syft and Grype) in a Kubernetes cluster with an eBPF (Falco) twist! It monitors pods from their start till a limited time to view their file activity and discover which software packages are used in runtime and which are not. Based of this it can remove the packages from vulnerability report that not used therefore cannot be exploited!
 
 See yourself:
 
@@ -12,8 +12,8 @@ See yourself:
 
 The goal of Sneeffer is to find which vulnerabilities (CVEs) are relevant for a specific application of a container by monitoring its file activity and discovering which software packages are touched.
 
-Sneeffer is using [Falco](https://falco.org/) base libraries for monitoring container file activity in Kubernets. These libraries are injecting eBPF code to the kernel which monitors relevant Linux system calls.
-The ebpf-engine that Sneeffer is using can be found in following link: https://github.com/kubescape/ebpf-engine
+Sneeffer uses [Falco](https://falco.org/) base libraries for monitoring container file activity in Kubernets. These libraries are injecting eBPF code to the kernel which monitors relevant Linux system calls.
+The ebpf-engine that Sneeffer uses can be found in following link: https://github.com/kubescape/ebpf-engine
 
 ## Prerequisites
 
@@ -104,7 +104,7 @@ metadata:
 spec:
   imageName: docker.io/library/nginx@sha256:970fab39f49cfac758a2c9a73414a483fc56bded6f8c578c651408567dceb356
   summary:
-    description: Wow!! there are only 8 relavent vulnerebilities out of 134 in this
+    description: 8 relevant vulnerabilities detected out of 134 total in this image
       image
     imageVulns:
       all: 134
@@ -121,13 +121,13 @@ spec:
       medium: 2
       negligible: 4
 ```
-in order to get more detailed results(list of relevant and irrelevant vulnerabilities):
+in order to get more detailed results (list of relevant and irrelevant vulnerabilities):
 ```
 kubectl get rvd -w
 ```
 
 ### Limitations
-1. Sneeffer only creates vulnerability results for PODs it saw starting.  
+1. Sneeffer only creates vulnerability results for pods it saw starting.  
 
 ## Configuration file
 
@@ -158,7 +158,7 @@ sbomCreatorPath=./resources/sbom/syft
 vulnCreatorPath=./resources/vuln/grype
 snifferTime=1 
 loggerVerbose=INFO
-crdFullDetailedPath=./resources/k8s/crd-vuln-full-detailes.yaml
+crdFullDetailedPath=./resources/k8s/crd-vuln-full-details.yaml
 crdVulnSummaryPath=./resources/k8s/crd-vuln-summary.yaml
 myNode=minikube
 ```
@@ -169,7 +169,7 @@ myNode=minikube
 
 There are software packages which are not loaded by default inside the container when it is ran. Their load can be depending of software configuration, API call, time from start and etc. Sneeffer can only detect behavior which it saw happening thus will only mark vulnerabilities as "relevant" if it saw happening. In case a dynamic load happened during the observation period, it will detected and its vulnerablities marked as relevant. 
 
-To optimize results, we suggest running tests on the workload during to observation period. The bigger the test coverage the more precise the results will be.
+To optimize results, we suggest running tests on the workload during the observation period. The bigger the test coverage the more precise the results will be.
 
 ## Interpreted languages 
 
